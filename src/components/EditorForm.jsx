@@ -17,7 +17,7 @@ function createEmptyChapter(index) {
   };
 }
 
-export default function EditorForm({ config, value, onChange, onSubmit, onCancel, mode }) {
+export default function EditorForm({ config, value, onChange, onSubmit, onCancel, mode, saving = false }) {
   function updateField(name, fieldValue) {
     onChange({ ...value, [name]: fieldValue });
   }
@@ -143,8 +143,8 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
       </div>
 
       <div className="form-actions">
-        <button type="button" className="btn muted" onClick={onCancel}>Cancelar</button>
-        <button type="submit" className="btn primary">Guardar</button>
+        <button type="button" className="btn muted" onClick={onCancel} disabled={saving}>Cancelar</button>
+        <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button>
       </div>
     </form>
   );
