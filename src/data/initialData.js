@@ -21,7 +21,12 @@ export const initialCollections = {
       status: 'published',
       coverImage: '',
       shortDescription: 'Una lectura para recordar que el silencio de Dios no significa abandono.',
-      content: 'Página 1\nHay temporadas en las que oramos y parece que nada cambia.\n\nPágina 2\nEl silencio no siempre significa ausencia. Dios también trabaja en lo profundo.'
+      chapters: [
+        {
+          title: 'El silencio no es abandono',
+          content: 'Hay temporadas en las que oramos y parece que nada cambia.\n\nEl silencio no siempre significa ausencia. Muchas veces Dios trabaja en lo profundo.\n\nLa fe verdadera también permanece cuando el proceso es lento.'
+        }
+      ]
     }
   ],
   videos: [
@@ -95,14 +100,14 @@ export const sectionConfig = {
   stories: {
     label: 'Historias y reflexiones',
     singular: 'Historia',
-    description: 'Escribe lecturas que luego se mostrarán en la web pública con estilo de libro.',
+    description: 'Crea historias con capítulos. Cada capítulo se divide automáticamente en páginas en la web pública.',
     fields: [
       { name: 'title', label: 'Título', type: 'text', required: true },
       { name: 'slug', label: 'Slug URL', type: 'text', required: true },
       { name: 'category', label: 'Categoría', type: 'text' },
       { name: 'coverImage', label: 'URL imagen de portada', type: 'url' },
       { name: 'shortDescription', label: 'Descripción corta', type: 'textarea' },
-      { name: 'content', label: 'Contenido por páginas', type: 'editor' },
+      { name: 'chapters', label: 'Capítulos', type: 'chapters' },
       { name: 'status', label: 'Estado', type: 'status' }
     ]
   },
