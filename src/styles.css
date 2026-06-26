@@ -101,6 +101,8 @@ input:focus, textarea:focus, select:focus { border-color: rgba(31, 77, 63, 0.55)
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .form-grid .full { grid-column: 1 / -1; }
 .form-actions { display: flex; justify-content: flex-end; gap: 12px; }
+.slug-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.slug-row .btn { min-height: 46px; white-space: nowrap; }
 
 .chapter-editor { display: grid; gap: 16px; }
 .chapter-editor-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 18px; background: var(--panel-soft); border: 1px solid var(--line); border-radius: 18px; }
@@ -144,4 +146,5 @@ td small { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vert
   .admin-nav { grid-template-columns: 1fr; }
   .page-title h2 { font-size: 2.1rem; }
   .chapter-card { padding: 14px; }
+  .slug-row { grid-template-columns: 1fr; }
 }
