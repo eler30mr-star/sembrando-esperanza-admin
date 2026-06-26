@@ -1,6 +1,18 @@
+function createSlug(text) {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 function createEmptyChapter(index) {
   return {
-    title: `Capítulo ${index + 1}`,
+    title: '',
     content: ''
   };
 }
@@ -8,6 +20,12 @@ function createEmptyChapter(index) {
 export default function EditorForm({ config, value, onChange, onSubmit, onCancel, mode }) {
   function updateField(name, fieldValue) {
     onChange({ ...value, [name]: fieldValue });
+  }
+
+  function generateSlug() {
+    const slug = createSlug(value.title || value.theme || value.reference || '');
+    if (!slug) return;
+    onChange({ ...value, slug });
   }
 
   function updateChapter(index, field, fieldValue) {
@@ -54,7 +72,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
                 <div className="chapter-editor-head">
                   <div>
                     <span>{field.label}</span>
-                    <p>Crea capítulos independientes. Cada capítulo se dividirá automáticamente en páginas en la web pública.</p>
+                    <p>Crea capítulos independientes. El título del capítulo es opcional; si lo dejas vacío, la web usará Capítulo 1, Capítulo 2, etc.</p>
                   </div>
                   <button className="btn muted" type="button" onClick={addChapter}>Agregar capítulo</button>
                 </div>
@@ -68,12 +86,11 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
                       </div>
 
                       <label>
-                        <span>Título del capítulo</span>
+                        <span>Título del capítulo opcional</span>
                         <input
                           value={chapter.title || ''}
-                          required
                           onChange={(event) => updateChapter(index, 'title', event.target.value)}
-                          placeholder={`Capítulo ${index + 1}`}
+                          placeholder={`Ejemplo: El silencio no es abandono`}
                         />
                       </label>
 
@@ -110,6 +127,11 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
                   <option value="published">Publicado</option>
                   <option value="archived">Archivado</option>
                 </select>
+              ) : field.name === 'slug' ? (
+                <div className="slug-row">
+                  <input type="text" {...commonProps} />
+                  <button className="btn muted" type="button" onClick={generateSlug}>Generar</button>
+                </div>
               ) : field.type === 'textarea' || field.type === 'editor' ? (
                 <textarea rows={field.type === 'editor' ? 10 : 4} {...commonProps} />
               ) : (
