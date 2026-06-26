@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import EditorForm from '../components/EditorForm.jsx';
 import { sectionConfig } from '../data/initialData.js';
-import { createId, loadCollections, saveCollections } from '../services/localStore.js';
+import { createId, loadCollections } from '../services/localStore.js';
+import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
 
 function emptyItemFor(config) {
   return config.fields.reduce((acc, field) => {
-    acc[field.name] = field.type === 'status' ? 'draft' : '';
+    if (field.type === 'status') acc[field.name] = 'draft';
+    else if (field.type === 'chapters') acc[field.name] = [{ title: '', content: '' }];
+    else acc[field.name] = '';
     return acc;
   }, {});
 }
@@ -20,6 +23,28 @@ export default function SectionManager({ section }) {
   const items = collections[section] || [];
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyItemFor(config));
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadItems() {
+      setLoading(true);
+      setMessage('');
+      const loadedItems = await loadSectionItems(section);
+      if (!alive) return;
+      setCollections((current) => ({ ...current, [section]: loadedItems }));
+      setLoading(false);
+    }
+
+    loadItems();
+
+    return () => {
+      alive = false;
+    };
+  }, [section]);
 
   const stats = useMemo(() => ({
     total: items.length,
@@ -30,34 +55,56 @@ export default function SectionManager({ section }) {
   function startCreate() {
     setEditing('new');
     setDraft(emptyItemFor(config));
+    setMessage('');
   }
 
   function startEdit(item) {
     setEditing(item.id);
     setDraft(item);
+    setMessage('');
   }
 
-  function save(event) {
+  async function save(event) {
     event.preventDefault();
-    const nextItem = editing === 'new'
-      ? { ...draft, id: createId(section.slice(0, -1) || section), updatedAt: new Date().toISOString() }
-      : { ...draft, updatedAt: new Date().toISOString() };
+    setSaving(true);
+    setMessage('');
 
-    const nextItems = editing === 'new'
-      ? [nextItem, ...items]
-      : items.map((item) => item.id === editing ? nextItem : item);
+    try {
+      const nextItem = editing === 'new'
+        ? { ...draft, id: createId(section.slice(0, -1) || section) }
+        : { ...draft };
 
-    const nextCollections = { ...collections, [section]: nextItems };
-    setCollections(nextCollections);
-    saveCollections(nextCollections);
-    setEditing(null);
-    setDraft(emptyItemFor(config));
+      const savedItem = await saveSectionItem(section, nextItem);
+      const nextItems = editing === 'new'
+        ? [savedItem, ...items]
+        : items.map((item) => item.id === editing ? savedItem : item);
+
+      setCollections((current) => ({ ...current, [section]: nextItems }));
+      setEditing(null);
+      setDraft(emptyItemFor(config));
+      setMessage('Contenido guardado correctamente. Si está publicado, aparecerá en la web pública.');
+    } catch (error) {
+      console.error('No se pudo guardar el contenido.', error);
+      setMessage('No se pudo guardar. Revisa Firebase, reglas o variables Vercel.');
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function remove(id) {
-    const nextCollections = { ...collections, [section]: items.filter((item) => item.id !== id) };
-    setCollections(nextCollections);
-    saveCollections(nextCollections);
+  async function remove(id) {
+    setMessage('');
+
+    try {
+      await deleteSectionItem(section, id);
+      setCollections((current) => ({
+        ...current,
+        [section]: items.filter((item) => item.id !== id)
+      }));
+      setMessage('Contenido eliminado correctamente.');
+    } catch (error) {
+      console.error('No se pudo eliminar el contenido.', error);
+      setMessage('No se pudo eliminar. Revisa Firebase o permisos.');
+    }
   }
 
   return (
@@ -77,6 +124,9 @@ export default function SectionManager({ section }) {
         <span>Borradores: <strong>{stats.drafts}</strong></span>
       </div>
 
+      {message && <p className="admin-message">{message}</p>}
+      {loading && <p className="admin-message">Cargando contenido...</p>}
+
       {editing && (
         <EditorForm
           config={config}
@@ -85,6 +135,7 @@ export default function SectionManager({ section }) {
           onSubmit={save}
           onCancel={() => setEditing(null)}
           mode={editing === 'new' ? 'create' : 'edit'}
+          saving={saving}
         />
       )}
 
@@ -115,7 +166,7 @@ export default function SectionManager({ section }) {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && (
+            {items.length === 0 && !loading && (
               <tr>
                 <td colSpan="4" className="empty-state">No hay contenido todavía.</td>
               </tr>
