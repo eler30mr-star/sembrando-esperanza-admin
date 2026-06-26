@@ -1,7 +1,41 @@
+function createEmptyChapter(index) {
+  return {
+    title: `Capítulo ${index + 1}`,
+    content: ''
+  };
+}
+
 export default function EditorForm({ config, value, onChange, onSubmit, onCancel, mode }) {
   function updateField(name, fieldValue) {
     onChange({ ...value, [name]: fieldValue });
   }
+
+  function updateChapter(index, field, fieldValue) {
+    const chapters = Array.isArray(value.chapters) && value.chapters.length
+      ? value.chapters
+      : [createEmptyChapter(0)];
+
+    const nextChapters = chapters.map((chapter, chapterIndex) => (
+      chapterIndex === index ? { ...chapter, [field]: fieldValue } : chapter
+    ));
+
+    onChange({ ...value, chapters: nextChapters });
+  }
+
+  function addChapter() {
+    const chapters = Array.isArray(value.chapters) ? value.chapters : [];
+    onChange({ ...value, chapters: [...chapters, createEmptyChapter(chapters.length)] });
+  }
+
+  function removeChapter(index) {
+    const chapters = Array.isArray(value.chapters) ? value.chapters : [];
+    const nextChapters = chapters.filter((_, chapterIndex) => chapterIndex !== index);
+    onChange({ ...value, chapters: nextChapters.length ? nextChapters : [createEmptyChapter(0)] });
+  }
+
+  const storyChapters = Array.isArray(value.chapters) && value.chapters.length
+    ? value.chapters
+    : [createEmptyChapter(0)];
 
   return (
     <form className="editor-form" onSubmit={onSubmit}>
@@ -14,6 +48,52 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
 
       <div className="form-grid">
         {config.fields.map((field) => {
+          if (field.type === 'chapters') {
+            return (
+              <div key={field.name} className="chapter-editor full">
+                <div className="chapter-editor-head">
+                  <div>
+                    <span>{field.label}</span>
+                    <p>Crea capítulos independientes. Cada capítulo se dividirá automáticamente en páginas en la web pública.</p>
+                  </div>
+                  <button className="btn muted" type="button" onClick={addChapter}>Agregar capítulo</button>
+                </div>
+
+                <div className="chapter-list">
+                  {storyChapters.map((chapter, index) => (
+                    <section className="chapter-card" key={index}>
+                      <div className="chapter-card-head">
+                        <strong>Capítulo {index + 1}</strong>
+                        <button type="button" className="danger-link" onClick={() => removeChapter(index)}>Eliminar</button>
+                      </div>
+
+                      <label>
+                        <span>Título del capítulo</span>
+                        <input
+                          value={chapter.title || ''}
+                          required
+                          onChange={(event) => updateChapter(index, 'title', event.target.value)}
+                          placeholder={`Capítulo ${index + 1}`}
+                        />
+                      </label>
+
+                      <label className="full">
+                        <span>Contenido del capítulo</span>
+                        <textarea
+                          rows={12}
+                          value={chapter.content || ''}
+                          required
+                          onChange={(event) => updateChapter(index, 'content', event.target.value)}
+                          placeholder="Escribe aquí todo el contenido del capítulo. Si tiene miles de caracteres, la web lo dividirá automáticamente en páginas."
+                        />
+                      </label>
+                    </section>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+
           const commonProps = {
             id: field.name,
             value: value[field.name] || '',
