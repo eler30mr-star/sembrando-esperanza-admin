@@ -9,7 +9,6 @@ import {
   setDoc
 } from 'firebase/firestore';
 import { db, firebaseReady } from './firebase.js';
-import { loadCollections, saveCollections } from './localStore.js';
 
 function cleanForFirestore(value) {
   if (Array.isArray(value)) {
@@ -27,46 +26,34 @@ function cleanForFirestore(value) {
   return value;
 }
 
+function requireFirebase() {
+  if (!firebaseReady || !db) {
+    throw new Error('Firebase no está configurado. Revisa variables de entorno en Vercel y vuelve a desplegar.');
+  }
+}
+
 function getCollectionRef(section) {
-  if (!firebaseReady || !db) return null;
+  requireFirebase();
   return collection(db, section);
 }
 
 export async function loadSectionItems(section) {
-  if (!firebaseReady || !db) {
-    const localCollections = loadCollections();
-    return localCollections[section] || [];
-  }
+  requireFirebase();
 
-  try {
-    const q = query(getCollectionRef(section), orderBy('updatedAtMs', 'desc'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-  } catch (error) {
-    console.error(`No se pudo cargar ${section} desde Firebase.`, error);
-    const localCollections = loadCollections();
-    return localCollections[section] || [];
-  }
+  const q = query(getCollectionRef(section), orderBy('updatedAtMs', 'desc'));
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
 export async function saveSectionItem(section, item) {
+  requireFirebase();
+
   const now = Date.now();
   const nextItem = cleanForFirestore({
     ...item,
     updatedAtMs: now,
     updatedAt: new Date(now).toISOString()
   });
-
-  if (!firebaseReady || !db) {
-    const localCollections = loadCollections();
-    const currentItems = localCollections[section] || [];
-    const exists = currentItems.some((entry) => entry.id === nextItem.id);
-    const nextItems = exists
-      ? currentItems.map((entry) => entry.id === nextItem.id ? nextItem : entry)
-      : [nextItem, ...currentItems];
-    saveCollections({ ...localCollections, [section]: nextItems });
-    return nextItem;
-  }
 
   await setDoc(doc(db, section, nextItem.id), {
     ...nextItem,
@@ -77,12 +64,6 @@ export async function saveSectionItem(section, item) {
 }
 
 export async function deleteSectionItem(section, id) {
-  if (!firebaseReady || !db) {
-    const localCollections = loadCollections();
-    const currentItems = localCollections[section] || [];
-    saveCollections({ ...localCollections, [section]: currentItems.filter((item) => item.id !== id) });
-    return;
-  }
-
+  requireFirebase();
   await deleteDoc(doc(db, section, id));
 }
