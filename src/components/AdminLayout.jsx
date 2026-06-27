@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { signOut } from 'firebase/auth';
 import { BookOpen, Home, Image, LayoutDashboard, LogOut, PenLine, PlayCircle, Settings, ShieldCheck, Sparkles } from 'lucide-react';
+import { auth } from '../services/firebase.js';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -15,8 +17,8 @@ const navItems = [
 export default function AdminLayout() {
   const navigate = useNavigate();
 
-  function logout() {
-    localStorage.removeItem('se-admin-session');
+  async function logout() {
+    if (auth) await signOut(auth);
     navigate('/login');
   }
 
