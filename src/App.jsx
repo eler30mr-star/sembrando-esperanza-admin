@@ -1,13 +1,32 @@
+import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { onAuthStateChanged } from 'firebase/auth';
 import AdminLayout from './components/AdminLayout.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Login from './pages/Login.jsx';
 import SectionManager from './pages/SectionManager.jsx';
 import NotFound from './pages/NotFound.jsx';
+import { adminEmail, auth, firebaseReady } from './services/firebase.js';
 
-function RequireLocalSession({ children }) {
-  const session = localStorage.getItem('se-admin-session');
-  return session ? children : <Navigate to="/login" replace />;
+function RequireFirebaseSession({ children }) {
+  const [checking, setChecking] = useState(true);
+  const [allowed, setAllowed] = useState(false);
+
+  useEffect(() => {
+    if (!firebaseReady || !auth) {
+      setAllowed(false);
+      setChecking(false);
+      return undefined;
+    }
+
+    return onAuthStateChanged(auth, (user) => {
+      setAllowed(Boolean(user && user.email?.toLowerCase() === adminEmail.toLowerCase()));
+      setChecking(false);
+    });
+  }, []);
+
+  if (checking) return <main className="login-page"><p className="admin-message">Verificando sesión...</p></main>;
+  return allowed ? children : <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -17,9 +36,9 @@ export default function App() {
       <Route
         path="/"
         element={
-          <RequireLocalSession>
+          <RequireFirebaseSession>
             <AdminLayout />
-          </RequireLocalSession>
+          </RequireFirebaseSession>
         }
       >
         <Route index element={<Dashboard />} />
