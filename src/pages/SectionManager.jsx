@@ -3,6 +3,7 @@ import EditorForm from '../components/EditorForm.jsx';
 import { sectionConfig } from '../data/initialData.js';
 import { createId, loadCollections } from '../services/localStore.js';
 import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
+import { firebaseReady } from '../services/firebase.js';
 
 function emptyItemFor(config) {
   return config.fields.reduce((acc, field) => {
@@ -82,7 +83,9 @@ export default function SectionManager({ section }) {
       setCollections((current) => ({ ...current, [section]: nextItems }));
       setEditing(null);
       setDraft(emptyItemFor(config));
-      setMessage('Contenido guardado correctamente. Si está publicado, aparecerá en la web pública.');
+      setMessage(firebaseReady
+        ? 'Contenido guardado en Firebase. Si está publicado, aparecerá en la web pública.'
+        : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
     } catch (error) {
       console.error('No se pudo guardar el contenido.', error);
       setMessage('No se pudo guardar. Revisa Firebase, reglas o variables Vercel.');
@@ -117,6 +120,10 @@ export default function SectionManager({ section }) {
         </div>
         <button className="btn primary" type="button" onClick={startCreate}>Nuevo</button>
       </div>
+
+      <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>
+        {firebaseReady ? 'Firebase conectado: el contenido se guarda en la nube.' : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
+      </p>
 
       <div className="mini-stats">
         <span>Total: <strong>{stats.total}</strong></span>
