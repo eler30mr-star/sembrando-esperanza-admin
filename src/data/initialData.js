@@ -1,3 +1,14 @@
+export const storyCategories = [
+  'Fe',
+  'Esperanza',
+  'Amor',
+  'Perdón',
+  'Oración',
+  'Familia',
+  'Milagros',
+  'Reflexión'
+];
+
 export const initialCollections = {
   plans: [
     {
@@ -104,7 +115,7 @@ export const sectionConfig = {
     fields: [
       { name: 'title', label: 'Título', type: 'text', required: true },
       { name: 'slug', label: 'Slug URL', type: 'text', required: true },
-      { name: 'category', label: 'Categoría', type: 'text' },
+      { name: 'category', label: 'Categoría', type: 'select', options: storyCategories, required: true },
       { name: 'coverImage', label: 'URL imagen de portada', type: 'url' },
       { name: 'shortDescription', label: 'Descripción corta', type: 'textarea' },
       { name: 'chapters', label: 'Capítulos', type: 'chapters' },
