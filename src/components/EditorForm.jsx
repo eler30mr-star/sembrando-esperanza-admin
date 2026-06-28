@@ -127,6 +127,13 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
                   <option value="published">Publicado</option>
                   <option value="archived">Archivado</option>
                 </select>
+              ) : field.type === 'select' ? (
+                <select {...commonProps}>
+                  <option value="">Selecciona una opción</option>
+                  {(field.options || []).map((option) => (
+                    <option key={option} value={option}>{option}</option>
+                  ))}
+                </select>
               ) : field.name === 'slug' ? (
                 <div className="slug-row">
                   <input type="text" {...commonProps} />
