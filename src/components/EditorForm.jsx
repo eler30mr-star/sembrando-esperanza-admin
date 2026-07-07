@@ -15,7 +15,7 @@ function createEmptyChapter() {
 }
 
 function createEmptyPlanDay() {
-  return { title: '', subtitle: '', verse: '', text: '', prayer: '', action: '' };
+  return { title: '', subtitle: '', verse: '', text: '', internalize: '', prayer: '', action: '' };
 }
 
 function normalizeList(value) {
@@ -112,7 +112,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
           if (field.type === 'planDays') {
             const days = normalizePlanDays(value.days);
             return <div key={field.name} className="chapter-editor full">
-              <div className="chapter-editor-head"><div><span>{field.label}</span><p>Crea cada día con referencia bíblica, reflexión, oración y acción práctica.</p></div><button className="btn muted" type="button" onClick={addPlanDay}>Agregar día</button></div>
+              <div className="chapter-editor-head"><div><span>{field.label}</span><p>Crea cada día con referencia bíblica, reflexión, Interioriza, oración y acción práctica.</p></div><button className="btn muted" type="button" onClick={addPlanDay}>Agregar día</button></div>
               <div className="chapter-list">{days.map((day, index) => <section className="chapter-card" key={index}>
                 <div className="chapter-card-head"><strong>Día {index + 1}</strong><button type="button" className="danger-link" onClick={() => removePlanDay(index)}>Eliminar</button></div>
                 <div className="nested-grid">
@@ -120,6 +120,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
                   <label><span>Subtítulo</span><input value={day.subtitle || ''} onChange={(event) => updatePlanDay(index, 'subtitle', event.target.value)} /></label>
                   <label className="full"><span>Referencia bíblica</span><input value={day.verse || ''} required onChange={(event) => updatePlanDay(index, 'verse', event.target.value)} placeholder="Ejemplo: Isaías 41:10" /></label>
                   <label className="full"><span>Reflexión</span><textarea rows={8} value={day.text || ''} required onChange={(event) => updatePlanDay(index, 'text', event.target.value)} /></label>
+                  <label className="full"><span>Interioriza</span><textarea rows={3} value={day.internalize || ''} required onChange={(event) => updatePlanDay(index, 'internalize', event.target.value)} placeholder="Ejemplo: ¿Qué verdad de esta reflexión necesitas guardar hoy en tu corazón?" /></label>
                   <label className="full"><span>Oración del día</span><textarea rows={4} value={day.prayer || ''} required onChange={(event) => updatePlanDay(index, 'prayer', event.target.value)} /></label>
                   <label className="full"><span>Acción práctica</span><textarea rows={3} value={day.action || ''} required onChange={(event) => updatePlanDay(index, 'action', event.target.value)} /></label>
                 </div>
