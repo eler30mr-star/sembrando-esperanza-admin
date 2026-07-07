@@ -68,6 +68,17 @@ export default function SectionManager({ section }) {
     setMessage('');
   }
 
+  async function publishPlansList(plansToPublish) {
+    const response = await fetch('/api/publish-plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plans: plansToPublish })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'No se pudo publicar el JSON.');
+    return payload;
+  }
+
   async function save(event) {
     event.preventDefault();
     setSaving(true);
@@ -79,12 +90,20 @@ export default function SectionManager({ section }) {
       setCollections((current) => ({ ...current, [section]: nextItems }));
       setEditing(null);
       setDraft(emptyItemFor(config));
-      setMessage(firebaseReady ? 'Contenido guardado. Para actualizar la web pública, pulsa Publicar JSON.' : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
+
+      if (section === 'plans') {
+        setPublishing(true);
+        await publishPlansList(nextItems);
+        setMessage('Plan guardado y JSON publicado automáticamente. La web pública se actualizará en unos momentos.');
+      } else {
+        setMessage(firebaseReady ? 'Contenido guardado correctamente.' : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
+      }
     } catch (error) {
-      console.error('No se pudo guardar el contenido.', error);
-      setMessage('No se pudo guardar. Revisa Firebase, reglas o variables Vercel.');
+      console.error('No se pudo guardar o publicar el contenido.', error);
+      setMessage(error.message || 'No se pudo guardar o publicar. Revisa Firebase, GitHub o variables Vercel.');
     } finally {
       setSaving(false);
+      setPublishing(false);
     }
   }
 
@@ -92,13 +111,7 @@ export default function SectionManager({ section }) {
     setPublishing(true);
     setMessage('');
     try {
-      const response = await fetch('/api/publish-plans', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plans: items })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'No se pudo publicar el JSON.');
+      const payload = await publishPlansList(items);
       setMessage(`JSON publicado correctamente con ${payload.count} planes publicados. Vercel actualizará la web pública en unos momentos.`);
     } catch (error) {
       console.error('No se pudo publicar el JSON.', error);
@@ -148,7 +161,7 @@ export default function SectionManager({ section }) {
           onSubmit={save}
           onCancel={() => setEditing(null)}
           mode={editing === 'new' ? 'create' : 'edit'}
-          saving={saving}
+          saving={saving || publishing}
         />
       )}
 
