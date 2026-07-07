@@ -51,6 +51,23 @@ function cleanPlan(plan) {
   };
 }
 
+function isPublished(plan) {
+  const status = cleanString(plan?.status).toLowerCase();
+  return status === 'published' || status === 'publicado';
+}
+
+function getPlanIssues(plan) {
+  const cleaned = cleanPlan(plan);
+  const issues = [];
+
+  if (!isPublished(plan)) issues.push('no está publicado');
+  if (!cleaned.title) issues.push('falta título');
+  if (!cleaned.slug) issues.push('falta slug');
+  if (!cleaned.days.length) issues.push('no tiene días');
+
+  return { cleaned, issues };
+}
+
 async function githubRequest(path, options = {}) {
   const token = process.env.GITHUB_TOKEN;
 
@@ -94,10 +111,24 @@ export default async function handler(req, res) {
 
   try {
     const plans = Array.isArray(req.body?.plans) ? req.body.plans : [];
-    const publishedPlans = plans
-      .filter((plan) => plan?.status === 'published')
-      .map(cleanPlan)
-      .filter((plan) => plan.title && plan.slug && plan.days.length > 0);
+    const checkedPlans = plans.map(getPlanIssues);
+    const publishedPlans = checkedPlans
+      .filter((item) => item.issues.length === 0)
+      .map((item) => item.cleaned);
+
+    if (!publishedPlans.length) {
+      const invalid = checkedPlans.map((item) => ({
+        title: item.cleaned.title || 'Plan sin título',
+        issues: item.issues
+      }));
+
+      send(res, 400, {
+        error: 'No se publicó el JSON porque no hay planes válidos. Revisa que el plan esté en Publicado, tenga slug y tenga al menos un día.',
+        received: plans.length,
+        invalid
+      });
+      return;
+    }
 
     const json = `${JSON.stringify(publishedPlans, null, 2)}\n`;
     const sha = await getExistingFileSha();
