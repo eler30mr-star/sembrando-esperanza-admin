@@ -1,7 +1,7 @@
 const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-star/sembrando-esperanza';
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
-const PUBLIC_PLANS_INDEX_PATH = process.env.PUBLIC_PLANS_INDEX_PATH || 'src/data/plans.json';
-const PUBLIC_PLAN_DETAIL_DIR = process.env.PUBLIC_PLAN_DETAIL_DIR || 'src/data/plans';
+const PUBLIC_PLANS_INDEX_PATH = process.env.PUBLIC_PLANS_INDEX_PATH || 'public/data/plans.json';
+const PUBLIC_PLAN_DETAIL_DIR = process.env.PUBLIC_PLAN_DETAIL_DIR || 'public/data/plans';
 
 function send(res, status, payload) {
   res.status(status).json(payload);
@@ -77,7 +77,7 @@ function createPlanSummary(plan) {
     time: plan.time,
     coverImage: plan.coverImage,
     shortDescription: plan.shortDescription,
-    detailPath: `${PUBLIC_PLAN_DETAIL_DIR}/${plan.slug}.json`,
+    detailPath: `/data/plans/${plan.slug}.json`,
     updatedAtMs: plan.updatedAtMs
   };
 }
@@ -190,7 +190,7 @@ export default async function handler(req, res) {
     const indexCommit = await putJsonFile(
       PUBLIC_PLANS_INDEX_PATH,
       indexPlans,
-      'Publish plans index JSON from admin'
+      'Publish public plans index JSON from admin'
     );
     commits.push({ path: PUBLIC_PLANS_INDEX_PATH, commit: indexCommit });
 
@@ -199,7 +199,7 @@ export default async function handler(req, res) {
       const commit = await putJsonFile(
         detailPath,
         plan,
-        `Publish plan JSON: ${plan.slug}`
+        `Publish public plan JSON: ${plan.slug}`
       );
       commits.push({ path: detailPath, commit });
     }
