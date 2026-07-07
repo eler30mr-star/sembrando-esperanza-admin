@@ -1,6 +1,7 @@
 const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-star/sembrando-esperanza';
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
-const PUBLIC_PLANS_PATH = process.env.PUBLIC_PLANS_PATH || 'src/data/plans.json';
+const PUBLIC_PLANS_INDEX_PATH = process.env.PUBLIC_PLANS_INDEX_PATH || 'src/data/plans.json';
+const PUBLIC_PLAN_DETAIL_DIR = process.env.PUBLIC_PLAN_DETAIL_DIR || 'src/data/plans';
 
 function send(res, status, payload) {
   res.status(status).json(payload);
@@ -45,7 +46,7 @@ function formatTime(plan) {
   return /min|hora|día|dias|días/i.test(value) ? value : `${value} min al día`;
 }
 
-function cleanPlan(plan) {
+function createPlanDetail(plan) {
   const days = cleanDays(plan.days);
   return {
     id: cleanString(plan.id),
@@ -65,13 +66,30 @@ function cleanPlan(plan) {
   };
 }
 
+function createPlanSummary(plan) {
+  return {
+    id: plan.id,
+    title: plan.title,
+    slug: plan.slug,
+    category: plan.category,
+    status: plan.status,
+    dayCount: plan.dayCount,
+    duration: plan.duration,
+    time: plan.time,
+    coverImage: plan.coverImage,
+    shortDescription: plan.shortDescription,
+    detailPath: `${PUBLIC_PLAN_DETAIL_DIR}/${plan.slug}.json`,
+    updatedAtMs: plan.updatedAtMs
+  };
+}
+
 function isPublished(plan) {
   const status = cleanString(plan?.status).toLowerCase();
   return status === 'published' || status === 'publicado';
 }
 
 function getPlanIssues(plan) {
-  const cleaned = cleanPlan(plan);
+  const cleaned = createPlanDetail(plan);
   const issues = [];
 
   if (!isPublished(plan)) issues.push('no está publicado');
@@ -107,14 +125,37 @@ async function githubRequest(path, options = {}) {
   return response;
 }
 
-async function getExistingFileSha() {
+async function getExistingFileSha(path) {
   const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
-  const response = await githubRequest(`/repos/${owner}/${repo}/contents/${PUBLIC_PLANS_PATH}?ref=${PUBLIC_REPO_BRANCH}`);
+  const response = await githubRequest(`/repos/${owner}/${repo}/contents/${path}?ref=${PUBLIC_REPO_BRANCH}`);
 
   if (response.status === 404) return null;
 
   const payload = await response.json();
   return payload.sha || null;
+}
+
+async function putJsonFile(path, data, message) {
+  const sha = await getExistingFileSha(path);
+  const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
+  const json = `${JSON.stringify(data, null, 2)}\n`;
+
+  const body = {
+    message,
+    content: Buffer.from(json, 'utf8').toString('base64'),
+    branch: PUBLIC_REPO_BRANCH
+  };
+
+  if (sha) body.sha = sha;
+
+  const response = await githubRequest(`/repos/${owner}/${repo}/contents/${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  const result = await response.json();
+  return result?.commit?.sha || null;
 }
 
 export default async function handler(req, res) {
@@ -126,11 +167,11 @@ export default async function handler(req, res) {
   try {
     const plans = Array.isArray(req.body?.plans) ? req.body.plans : [];
     const checkedPlans = plans.map(getPlanIssues);
-    const publishedPlans = checkedPlans
+    const publishedPlanDetails = checkedPlans
       .filter((item) => item.issues.length === 0)
       .map((item) => item.cleaned);
 
-    if (!publishedPlans.length) {
+    if (!publishedPlanDetails.length) {
       const invalid = checkedPlans.map((item) => ({
         title: item.cleaned.title || 'Plan sin título',
         issues: item.issues
@@ -144,30 +185,32 @@ export default async function handler(req, res) {
       return;
     }
 
-    const json = `${JSON.stringify(publishedPlans, null, 2)}\n`;
-    const sha = await getExistingFileSha();
-    const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
+    const indexPlans = publishedPlanDetails.map(createPlanSummary);
+    const commits = [];
 
-    const body = {
-      message: 'Publish plans JSON from admin',
-      content: Buffer.from(json, 'utf8').toString('base64'),
-      branch: PUBLIC_REPO_BRANCH
-    };
+    const indexCommit = await putJsonFile(
+      PUBLIC_PLANS_INDEX_PATH,
+      indexPlans,
+      'Publish plans index JSON from admin'
+    );
+    commits.push({ path: PUBLIC_PLANS_INDEX_PATH, commit: indexCommit });
 
-    if (sha) body.sha = sha;
+    for (const plan of publishedPlanDetails) {
+      const detailPath = `${PUBLIC_PLAN_DETAIL_DIR}/${plan.slug}.json`;
+      const commit = await putJsonFile(
+        detailPath,
+        plan,
+        `Publish plan JSON: ${plan.slug}`
+      );
+      commits.push({ path: detailPath, commit });
+    }
 
-    const response = await githubRequest(`/repos/${owner}/${repo}/contents/${PUBLIC_PLANS_PATH}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-
-    const result = await response.json();
     send(res, 200, {
       ok: true,
-      count: publishedPlans.length,
-      path: PUBLIC_PLANS_PATH,
-      commit: result?.commit?.sha || null
+      count: publishedPlanDetails.length,
+      indexPath: PUBLIC_PLANS_INDEX_PATH,
+      detailDir: PUBLIC_PLAN_DETAIL_DIR,
+      commits
     });
   } catch (error) {
     send(res, 500, { error: error.message || 'No se pudo publicar el JSON.' });
