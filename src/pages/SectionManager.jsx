@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import EditorForm from '../components/EditorForm.jsx';
+import PlanLanguageEditor from '../components/PlanLanguageEditor.jsx';
 import { sectionConfig } from '../data/initialData.js';
 import { createId, loadCollections } from '../services/localStore.js';
 import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
