@@ -8,9 +8,25 @@ const languages = [
   { code: 'fr', label: 'Francés' }
 ];
 
+function emptyLanguagePlan(base = {}) {
+  return {
+    title: '',
+    slug: '',
+    category: '',
+    duration: '',
+    time: '',
+    coverImage: base.coverImage || '',
+    shortDescription: '',
+    learning: [''],
+    gains: [''],
+    status: base.status || 'draft',
+    days: []
+  };
+}
+
 function getValue(plan, lang) {
   if (lang === 'es') return plan;
-  return { ...plan, ...(plan.translations && plan.translations[lang] ? plan.translations[lang] : {}) };
+  return plan.translations && plan.translations[lang] ? plan.translations[lang] : emptyLanguagePlan(plan);
 }
 
 function setValue(plan, lang, nextValue) {
