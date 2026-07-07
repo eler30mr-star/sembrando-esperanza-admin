@@ -20,7 +20,8 @@ function cleanDays(value) {
   if (!Array.isArray(value)) return [];
 
   return value
-    .map((day) => ({
+    .map((day, index) => ({
+      dayNumber: Number(day?.dayNumber || index + 1),
       title: cleanString(day?.title),
       subtitle: cleanString(day?.subtitle),
       verse: cleanString(day?.verse),
@@ -32,6 +33,18 @@ function cleanDays(value) {
     .filter((day) => day.title || day.verse || day.text || day.prayer || day.action);
 }
 
+function formatDuration(plan, days) {
+  const value = cleanString(plan.duration);
+  if (!value) return `${days.length || 1} días`;
+  return /día|dias|días/i.test(value) ? value : `${value} días`;
+}
+
+function formatTime(plan) {
+  const value = cleanString(plan.time);
+  if (!value) return '5 min al día';
+  return /min|hora|día|dias|días/i.test(value) ? value : `${value} min al día`;
+}
+
 function cleanPlan(plan) {
   const days = cleanDays(plan.days);
   return {
@@ -40,8 +53,9 @@ function cleanPlan(plan) {
     slug: cleanString(plan.slug),
     category: cleanString(plan.category) || 'Fe',
     status: 'published',
-    duration: cleanString(plan.duration) || `${days.length || 1} días`,
-    time: cleanString(plan.time) || '5 min al día',
+    dayCount: days.length,
+    duration: formatDuration(plan, days),
+    time: formatTime(plan),
     coverImage: cleanString(plan.coverImage),
     shortDescription: cleanString(plan.shortDescription),
     learning: cleanStringList(plan.learning),
