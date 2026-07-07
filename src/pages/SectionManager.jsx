@@ -40,6 +40,7 @@ export default function SectionManager({ section }) {
   const [draft, setDraft] = useState(emptyItemFor(config));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -98,13 +99,39 @@ export default function SectionManager({ section }) {
       setEditing(null);
       setDraft(emptyItemFor(config));
       setMessage(firebaseReady
-        ? 'Contenido guardado en Firebase. Si está publicado, aparecerá en la web pública.'
+        ? 'Contenido guardado. Para actualizar la web pública, pulsa Publicar JSON.'
         : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
     } catch (error) {
       console.error('No se pudo guardar el contenido.', error);
       setMessage('No se pudo guardar. Revisa Firebase, reglas o variables Vercel.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function publishPlansJson() {
+    setPublishing(true);
+    setMessage('');
+
+    try {
+      const response = await fetch('/api/publish-plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plans: items })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(payload.error || 'No se pudo publicar el JSON.');
+      }
+
+      setMessage(`JSON publicado correctamente con ${payload.count} planes publicados. Vercel actualizará la web pública en unos momentos.`);
+    } catch (error) {
+      console.error('No se pudo publicar el JSON.', error);
+      setMessage(error.message || 'No se pudo publicar el JSON.');
+    } finally {
+      setPublishing(false);
     }
   }
 
@@ -132,11 +159,18 @@ export default function SectionManager({ section }) {
           <h2>{config.label}</h2>
           <p>{config.description}</p>
         </div>
-        <button className="btn primary" type="button" onClick={startCreate}>Nuevo</button>
+        <div className="section-actions">
+          {section === 'plans' && (
+            <button className="btn muted" type="button" onClick={publishPlansJson} disabled={publishing || loading}>
+              {publishing ? 'Publicando...' : 'Publicar JSON'}
+            </button>
+          )}
+          <button className="btn primary" type="button" onClick={startCreate}>Nuevo</button>
+        </div>
       </div>
 
       <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>
-        {firebaseReady ? 'Firebase conectado: el contenido se guarda en la nube.' : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
+        {firebaseReady ? 'Firebase conectado: aquí editas los planes. La web pública lee el JSON publicado.' : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
       </p>
 
       <div className="mini-stats">
