@@ -26,7 +26,6 @@ function cleanDays(value) {
       title: cleanString(day?.title),
       subtitle: cleanString(day?.subtitle),
       verse: cleanString(day?.verse),
-      verseText: cleanString(day?.verseText),
       text: cleanString(day?.text),
       prayer: cleanString(day?.prayer),
       action: cleanString(day?.action)
