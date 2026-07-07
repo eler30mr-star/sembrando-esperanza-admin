@@ -9,20 +9,19 @@ export const storyCategories = [
   'Reflexión'
 ];
 
+export const planCategories = [
+  'Fe',
+  'Oración',
+  'Ansiedad',
+  'Paz',
+  'Familia',
+  'Gratitud',
+  'Esperanza',
+  'Perdón'
+];
+
 export const initialCollections = {
-  plans: [
-    {
-      id: 'plan-001',
-      title: '7 días para fortalecer tu fe',
-      slug: 'siete-dias-para-fortalecer-tu-fe',
-      category: 'Fe',
-      status: 'published',
-      coverImage: '',
-      shortDescription: 'Un camino devocional para recordar que Dios sigue obrando.',
-      duration: '7 días',
-      content: 'Día 1: Dios está contigo\nVersículo: Isaías 41:10\nReflexión: No temas, porque Dios camina contigo.\nOración: Señor, fortalece mi fe.\nAcción: Ora cinco minutos.'
-    }
-  ],
+  plans: [],
   stories: [
     {
       id: 'story-001',
@@ -84,7 +83,7 @@ export const initialCollections = {
       id: 'home-001',
       title: 'Contenido destacado del inicio',
       status: 'published',
-      planFeatured: '7 días para fortalecer tu fe',
+      planFeatured: '',
       storyFeatured: 'Dios también trabaja en el silencio',
       videoFeatured: 'Reflexión del día: Dios no llega tarde',
       verseFeatured: 'Romanos 15:13'
@@ -96,15 +95,18 @@ export const sectionConfig = {
   plans: {
     label: 'Planes bíblicos',
     singular: 'Plan',
-    description: 'Crea planes por días con versículo, reflexión, oración y acción práctica.',
+    description: 'Crea planes completos por días con portada, duración, aprendizaje, beneficios, versículo, reflexión, oración y acción práctica.',
     fields: [
-      { name: 'title', label: 'Título', type: 'text', required: true },
+      { name: 'title', label: 'Título del plan', type: 'text', required: true },
       { name: 'slug', label: 'Slug URL', type: 'text', required: true },
-      { name: 'category', label: 'Categoría', type: 'text' },
-      { name: 'duration', label: 'Duración', type: 'text' },
-      { name: 'coverImage', label: 'URL imagen de portada', type: 'url' },
-      { name: 'shortDescription', label: 'Descripción corta', type: 'textarea' },
-      { name: 'content', label: 'Contenido del plan', type: 'editor' },
+      { name: 'category', label: 'Categoría', type: 'select', options: planCategories, required: true },
+      { name: 'duration', label: 'Duración visible', type: 'text', placeholder: 'Ejemplo: 7 días', required: true },
+      { name: 'time', label: 'Tiempo estimado', type: 'text', placeholder: 'Ejemplo: 5 min al día' },
+      { name: 'coverImage', label: 'URL imagen de portada', type: 'url', required: true },
+      { name: 'shortDescription', label: 'Descripción del plan', type: 'textarea', required: true },
+      { name: 'learning', label: 'En este plan aprenderás', type: 'list', itemPlaceholder: 'Ejemplo: Confiar en Dios en todo momento' },
+      { name: 'gains', label: 'Lo que el usuario gana al completar el plan', type: 'list', itemPlaceholder: 'Ejemplo: Más confianza en Dios' },
+      { name: 'days', label: 'Días del plan', type: 'planDays', required: true },
       { name: 'status', label: 'Estado', type: 'status' }
     ]
   },
