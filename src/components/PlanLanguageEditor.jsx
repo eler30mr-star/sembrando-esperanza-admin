@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import EditorForm from './EditorForm.jsx';
 
 const languages = [
@@ -14,7 +14,7 @@ function getValue(plan, lang) {
 }
 
 function setValue(plan, lang, nextValue) {
-  if (lang === 'es') return nextValue;
+  if (lang === 'es') return { ...plan, ...nextValue };
   return {
     ...plan,
     translations: {
@@ -24,34 +24,48 @@ function setValue(plan, lang, nextValue) {
   };
 }
 
+function normalizeUploadedPlan(data) {
+  const plan = Array.isArray(data) ? data[0] : data;
+  if (!plan || typeof plan !== 'object') throw new Error('El JSON no contiene un plan válido.');
+  return {
+    title: plan.title || '',
+    slug: plan.slug || '',
+    category: plan.category || '',
+    duration: plan.duration || '',
+    time: plan.time || '',
+    coverImage: plan.coverImage || plan.image || '',
+    shortDescription: plan.shortDescription || plan.description || '',
+    learning: Array.isArray(plan.learning) ? plan.learning : [''],
+    gains: Array.isArray(plan.gains) ? plan.gains : [''],
+    days: Array.isArray(plan.days) ? plan.days.map((day) => ({
+      title: day.title || '',
+      subtitle: day.subtitle || '',
+      verse: day.verse || '',
+      text: day.text || '',
+      prayer: day.prayer || '',
+      action: day.action || ''
+    })) : []
+  };
+}
+
 export default function PlanLanguageEditor(props) {
   const { config, draft, setDraft, onSubmit, onCancel, mode, saving, setMessage } = props;
   const [lang, setLang] = useState('es');
-  const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef(null);
 
-  async function runTranslate() {
-    setLoading(true);
-    if (setMessage) setMessage('');
+  async function loadJsonFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
     try {
-      const response = await fetch('/api/translate-plan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: draft, targets: ['en', 'pt', 'fr'] })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'No se pudo traducir el plan.');
-      setDraft((current) => ({
-        ...current,
-        translations: {
-          ...(current.translations || {}),
-          ...(payload.translations || {})
-        }
-      }));
-      if (setMessage) setMessage('Traducción creada. Revisa las pestañas antes de publicar.');
+      const text = await file.text();
+      const json = JSON.parse(text);
+      const nextPlan = normalizeUploadedPlan(json);
+      setDraft((current) => setValue(current, lang, nextPlan));
+      if (setMessage) setMessage(`JSON cargado en ${languages.find((item) => item.code === lang)?.label || lang}. Revisa y guarda.`);
     } catch (error) {
-      if (setMessage) setMessage(error.message || 'No se pudo traducir el plan.');
-    } finally {
-      setLoading(false);
+      if (setMessage) setMessage(error.message || 'No se pudo leer el JSON.');
     }
   }
 
@@ -65,9 +79,12 @@ export default function PlanLanguageEditor(props) {
             </button>
           ))}
         </div>
-        <button className="btn muted" type="button" onClick={runTranslate} disabled={loading || saving}>
-          {loading ? 'Traduciendo...' : 'Traducir'}
-        </button>
+        <div className="json-upload-actions">
+          <input ref={fileInputRef} type="file" accept="application/json,.json" hidden onChange={loadJsonFile} />
+          <button className="btn muted" type="button" onClick={() => fileInputRef.current?.click()} disabled={saving}>
+            Subir JSON del idioma
+          </button>
+        </div>
       </div>
       <EditorForm
         config={config}
