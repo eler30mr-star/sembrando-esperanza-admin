@@ -58,6 +58,7 @@ function normalizeUploadedPlan(data) {
       subtitle: day.subtitle || '',
       verse: day.verse || '',
       text: day.text || '',
+      internalize: day.internalize || day.question || day.meditation || '',
       prayer: day.prayer || '',
       action: day.action || ''
     })) : []
