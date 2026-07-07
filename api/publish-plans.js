@@ -26,10 +26,11 @@ function cleanDays(value) {
       subtitle: cleanString(day?.subtitle),
       verse: cleanString(day?.verse),
       text: cleanString(day?.text),
+      internalize: cleanString(day?.internalize || day?.question || day?.meditation),
       prayer: cleanString(day?.prayer),
       action: cleanString(day?.action)
     }))
-    .filter((day) => day.title || day.verse || day.text || day.prayer || day.action);
+    .filter((day) => day.title || day.verse || day.text || day.internalize || day.prayer || day.action);
 }
 
 function formatDuration(plan, days) {
