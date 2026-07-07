@@ -122,11 +122,11 @@ export default async function handler(req, res) {
 
   try {
     const plan = req.body?.plan || {};
-    const targets = Array.isArray(req.body?.targets) && req.body.targets.length ? req.body.targets : ['en', 'pt'];
+    const targets = Array.isArray(req.body?.targets) && req.body.targets.length ? req.body.targets : ['en', 'pt', 'fr'];
     const translations = {};
 
     for (const language of targets) {
-      if (!['en', 'pt'].includes(language)) continue;
+      if (!['en', 'pt', 'fr'].includes(language)) continue;
       translations[language] = await translatePlan(plan, language);
     }
 
