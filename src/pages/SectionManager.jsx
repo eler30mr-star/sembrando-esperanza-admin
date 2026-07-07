@@ -3,19 +3,11 @@ import EditorForm from '../components/EditorForm.jsx';
 import PlanLanguageEditor from '../components/PlanLanguageEditor.jsx';
 import { sectionConfig } from '../data/initialData.js';
 import { createId, loadCollections } from '../services/localStore.js';
-import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
+import { loadSectionItems, saveSectionItem } from '../services/contentService.js';
 import { firebaseReady } from '../services/firebase.js';
 
 function createEmptyPlanDay() {
-  return {
-    title: '',
-    subtitle: '',
-    verse: '',
-    verseText: '',
-    text: '',
-    prayer: '',
-    action: ''
-  };
+  return { title: '', subtitle: '', verse: '', text: '', prayer: '', action: '' };
 }
 
 function emptyItemFor(config) {
@@ -46,7 +38,6 @@ export default function SectionManager({ section }) {
 
   useEffect(() => {
     let alive = true;
-
     async function loadItems() {
       setLoading(true);
       setMessage('');
@@ -55,12 +46,8 @@ export default function SectionManager({ section }) {
       setCollections((current) => ({ ...current, [section]: loadedItems }));
       setLoading(false);
     }
-
     loadItems();
-
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [section]);
 
   const stats = useMemo(() => ({
@@ -85,23 +72,14 @@ export default function SectionManager({ section }) {
     event.preventDefault();
     setSaving(true);
     setMessage('');
-
     try {
-      const nextItem = editing === 'new'
-        ? { ...draft, id: createId(section.slice(0, -1) || section) }
-        : { ...draft };
-
+      const nextItem = editing === 'new' ? { ...draft, id: createId(section.slice(0, -1) || section) } : { ...draft };
       const savedItem = await saveSectionItem(section, nextItem);
-      const nextItems = editing === 'new'
-        ? [savedItem, ...items]
-        : items.map((item) => item.id === editing ? savedItem : item);
-
+      const nextItems = editing === 'new' ? [savedItem, ...items] : items.map((item) => item.id === editing ? savedItem : item);
       setCollections((current) => ({ ...current, [section]: nextItems }));
       setEditing(null);
       setDraft(emptyItemFor(config));
-      setMessage(firebaseReady
-        ? 'Contenido guardado. Para actualizar la web pública, pulsa Publicar JSON.'
-        : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
+      setMessage(firebaseReady ? 'Contenido guardado. Para actualizar la web pública, pulsa Publicar JSON.' : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
     } catch (error) {
       console.error('No se pudo guardar el contenido.', error);
       setMessage('No se pudo guardar. Revisa Firebase, reglas o variables Vercel.');
@@ -113,42 +91,20 @@ export default function SectionManager({ section }) {
   async function publishPlansJson() {
     setPublishing(true);
     setMessage('');
-
     try {
       const response = await fetch('/api/publish-plans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ plans: items })
       });
-
       const payload = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(payload.error || 'No se pudo publicar el JSON.');
-      }
-
+      if (!response.ok) throw new Error(payload.error || 'No se pudo publicar el JSON.');
       setMessage(`JSON publicado correctamente con ${payload.count} planes publicados. Vercel actualizará la web pública en unos momentos.`);
     } catch (error) {
       console.error('No se pudo publicar el JSON.', error);
       setMessage(error.message || 'No se pudo publicar el JSON.');
     } finally {
       setPublishing(false);
-    }
-  }
-
-  async function remove(id) {
-    setMessage('');
-
-    try {
-      await deleteSectionItem(section, id);
-      setCollections((current) => ({
-        ...current,
-        [section]: items.filter((item) => item.id !== id)
-      }));
-      setMessage('Contenido eliminado correctamente.');
-    } catch (error) {
-      console.error('No se pudo eliminar el contenido.', error);
-      setMessage('No se pudo eliminar. Revisa Firebase o permisos.');
     }
   }
 
@@ -183,7 +139,20 @@ export default function SectionManager({ section }) {
       {message && <p className="admin-message">{message}</p>}
       {loading && <p className="admin-message">Cargando contenido...</p>}
 
-      {editing && (
+      {editing && section === 'plans' && (
+        <PlanLanguageEditor
+          config={config}
+          draft={draft}
+          setDraft={setDraft}
+          setMessage={setMessage}
+          onSubmit={save}
+          onCancel={() => setEditing(null)}
+          mode={editing === 'new' ? 'create' : 'edit'}
+          saving={saving}
+        />
+      )}
+
+      {editing && section !== 'plans' && (
         <EditorForm
           config={config}
           value={draft}
@@ -197,36 +166,17 @@ export default function SectionManager({ section }) {
 
       <div className="table-card">
         <table>
-          <thead>
-            <tr>
-              <th>Título</th>
-              <th>Categoría/Tema</th>
-              <th>Estado</th>
-              <th>Acciones</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Título</th><th>Categoría/Tema</th><th>Estado</th><th>Acciones</th></tr></thead>
           <tbody>
             {items.map((item) => (
               <tr key={item.id}>
-                <td>
-                  <strong>{getPrimaryTitle(item)}</strong>
-                  <small>{item.shortDescription || item.url || item.text || ''}</small>
-                </td>
+                <td><strong>{getPrimaryTitle(item)}</strong><small>{item.shortDescription || item.url || item.text || ''}</small></td>
                 <td>{item.category || item.theme || item.moment || '—'}</td>
                 <td><span className={`status ${item.status || 'draft'}`}>{item.status || 'draft'}</span></td>
-                <td>
-                  <div className="row-actions">
-                    <button type="button" onClick={() => startEdit(item)}>Editar</button>
-                    <button type="button" className="danger" onClick={() => remove(item.id)}>Eliminar</button>
-                  </div>
-                </td>
+                <td><div className="row-actions"><button type="button" onClick={() => startEdit(item)}>Editar</button></div></td>
               </tr>
             ))}
-            {items.length === 0 && !loading && (
-              <tr>
-                <td colSpan="4" className="empty-state">No hay contenido todavía.</td>
-              </tr>
-            )}
+            {items.length === 0 && !loading && <tr><td colSpan="4" className="empty-state">No hay contenido todavía.</td></tr>}
           </tbody>
         </table>
       </div>
