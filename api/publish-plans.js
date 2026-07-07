@@ -1,7 +1,6 @@
 const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-star/sembrando-esperanza';
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
-const PUBLIC_PLANS_INDEX_PATH = process.env.PUBLIC_PLANS_INDEX_PATH || 'public/data/plans.json';
-const PUBLIC_PLAN_DETAIL_DIR = process.env.PUBLIC_PLAN_DETAIL_DIR || 'public/data/plans';
+const PUBLIC_DATA_DIR = process.env.PUBLIC_DATA_DIR || 'public/data';
 
 function send(res, status, payload) {
   res.status(status).json(payload);
@@ -36,48 +35,56 @@ function cleanDays(value) {
 function formatDuration(plan, days) {
   const value = cleanString(plan.duration);
   if (!value) return `${days.length || 1} días`;
-  return /día|dias|días/i.test(value) ? value : `${value} días`;
+  return /día|dias|días|day|days|jour|jours|dia/i.test(value) ? value : `${value} días`;
 }
 
 function formatTime(plan) {
   const value = cleanString(plan.time);
   if (!value) return '5 min al día';
-  return /min|hora|día|dias|días/i.test(value) ? value : `${value} min al día`;
+  return /min|hora|hour|heure|día|dias|días|day|days|jour/i.test(value) ? value : `${value} min al día`;
 }
 
-function createPlanDetail(plan) {
-  const days = cleanDays(plan.days);
+function mergeLanguagePlan(plan, language) {
+  if (language === 'es') return plan;
+  return { ...plan, ...(plan.translations?.[language] || {}) };
+}
+
+function createPlanDetail(plan, language) {
+  const source = mergeLanguagePlan(plan, language);
+  const days = cleanDays(source.days);
   return {
     id: cleanString(plan.id),
-    title: cleanString(plan.title),
-    slug: cleanString(plan.slug),
-    category: cleanString(plan.category) || 'Fe',
+    title: cleanString(source.title),
+    slug: cleanString(source.slug || plan.slug),
+    category: cleanString(source.category) || cleanString(plan.category) || 'Fe',
     status: 'published',
+    language,
     dayCount: days.length,
-    duration: formatDuration(plan, days),
-    time: formatTime(plan),
-    coverImage: cleanString(plan.coverImage),
-    shortDescription: cleanString(plan.shortDescription),
-    learning: cleanStringList(plan.learning),
-    gains: cleanStringList(plan.gains),
+    duration: formatDuration(source, days),
+    time: formatTime(source),
+    coverImage: cleanString(source.coverImage || plan.coverImage),
+    shortDescription: cleanString(source.shortDescription),
+    learning: cleanStringList(source.learning),
+    gains: cleanStringList(source.gains),
     days,
     updatedAtMs: Number(plan.updatedAtMs || Date.now())
   };
 }
 
-function createPlanSummary(plan) {
+function createPlanSummary(plan, language) {
   return {
     id: plan.id,
     title: plan.title,
     slug: plan.slug,
     category: plan.category,
     status: plan.status,
+    language,
     dayCount: plan.dayCount,
     duration: plan.duration,
     time: plan.time,
     coverImage: plan.coverImage,
     shortDescription: plan.shortDescription,
-    detailPath: `/data/plans/${plan.slug}.json`,
+    detailPath: `/data/${language}/plans/${plan.slug}.json`,
     updatedAtMs: plan.updatedAtMs
   };
 }
@@ -88,7 +95,7 @@ function isPublished(plan) {
 }
 
 function getPlanIssues(plan) {
-  const cleaned = createPlanDetail(plan);
+  const cleaned = createPlanDetail(plan, 'es');
   const issues = [];
 
   if (!isPublished(plan)) issues.push('no está publicado');
@@ -157,6 +164,14 @@ async function putJsonFile(path, data, message) {
   return result?.commit?.sha || null;
 }
 
+function availableLanguages(plan) {
+  const languages = ['es'];
+  if (plan.translations?.en) languages.push('en');
+  if (plan.translations?.pt) languages.push('pt');
+  if (plan.translations?.fr) languages.push('fr');
+  return languages;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     send(res, 405, { error: 'Método no permitido.' });
@@ -166,11 +181,9 @@ export default async function handler(req, res) {
   try {
     const plans = Array.isArray(req.body?.plans) ? req.body.plans : [];
     const checkedPlans = plans.map(getPlanIssues);
-    const publishedPlanDetails = checkedPlans
-      .filter((item) => item.issues.length === 0)
-      .map((item) => item.cleaned);
+    const validPlans = plans.filter((plan, index) => checkedPlans[index].issues.length === 0);
 
-    if (!publishedPlanDetails.length) {
+    if (!validPlans.length) {
       const invalid = checkedPlans.map((item) => ({
         title: item.cleaned.title || 'Plan sin título',
         issues: item.issues
@@ -184,31 +197,40 @@ export default async function handler(req, res) {
       return;
     }
 
-    const indexPlans = publishedPlanDetails.map(createPlanSummary);
+    const grouped = { es: [], en: [], pt: [], fr: [] };
     const commits = [];
 
-    const indexCommit = await putJsonFile(
-      PUBLIC_PLANS_INDEX_PATH,
-      indexPlans,
-      'Publish public plans index JSON from admin'
-    );
-    commits.push({ path: PUBLIC_PLANS_INDEX_PATH, commit: indexCommit });
+    for (const plan of validPlans) {
+      for (const language of availableLanguages(plan)) {
+        const detail = createPlanDetail(plan, language);
+        if (!detail.title || !detail.slug || !detail.days.length) continue;
+        grouped[language].push(detail);
 
-    for (const plan of publishedPlanDetails) {
-      const detailPath = `${PUBLIC_PLAN_DETAIL_DIR}/${plan.slug}.json`;
-      const commit = await putJsonFile(
-        detailPath,
-        plan,
-        `Publish public plan JSON: ${plan.slug}`
+        const detailPath = `${PUBLIC_DATA_DIR}/${language}/plans/${detail.slug}.json`;
+        const commit = await putJsonFile(
+          detailPath,
+          detail,
+          `Publish ${language} plan JSON: ${detail.slug}`
+        );
+        commits.push({ path: detailPath, commit });
+      }
+    }
+
+    for (const language of Object.keys(grouped)) {
+      if (!grouped[language].length) continue;
+      const indexPath = `${PUBLIC_DATA_DIR}/${language}/plans.json`;
+      const indexCommit = await putJsonFile(
+        indexPath,
+        grouped[language].map((plan) => createPlanSummary(plan, language)),
+        `Publish ${language} plans index JSON from admin`
       );
-      commits.push({ path: detailPath, commit });
+      commits.push({ path: indexPath, commit: indexCommit });
     }
 
     send(res, 200, {
       ok: true,
-      count: publishedPlanDetails.length,
-      indexPath: PUBLIC_PLANS_INDEX_PATH,
-      detailDir: PUBLIC_PLAN_DETAIL_DIR,
+      count: validPlans.length,
+      languages: Object.keys(grouped).filter((language) => grouped[language].length),
       commits
     });
   } catch (error) {
