@@ -5,10 +5,24 @@ import { createId, loadCollections } from '../services/localStore.js';
 import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
 import { firebaseReady } from '../services/firebase.js';
 
+function createEmptyPlanDay() {
+  return {
+    title: '',
+    subtitle: '',
+    verse: '',
+    verseText: '',
+    text: '',
+    prayer: '',
+    action: ''
+  };
+}
+
 function emptyItemFor(config) {
   return config.fields.reduce((acc, field) => {
     if (field.type === 'status') acc[field.name] = 'draft';
     else if (field.type === 'chapters') acc[field.name] = [{ title: '', content: '' }];
+    else if (field.type === 'list') acc[field.name] = [''];
+    else if (field.type === 'planDays') acc[field.name] = [createEmptyPlanDay()];
     else acc[field.name] = '';
     return acc;
   }, {});
@@ -61,7 +75,7 @@ export default function SectionManager({ section }) {
 
   function startEdit(item) {
     setEditing(item.id);
-    setDraft(item);
+    setDraft({ ...emptyItemFor(config), ...item });
     setMessage('');
   }
 
