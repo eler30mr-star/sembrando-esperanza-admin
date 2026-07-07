@@ -4,7 +4,8 @@ import EditorForm from './EditorForm.jsx';
 const languages = [
   { code: 'es', label: 'Español' },
   { code: 'en', label: 'Inglés' },
-  { code: 'pt', label: 'Portugués' }
+  { code: 'pt', label: 'Portugués' },
+  { code: 'fr', label: 'Francés' }
 ];
 
 function getValue(plan, lang) {
@@ -35,7 +36,7 @@ export default function PlanLanguageEditor(props) {
       const response = await fetch('/api/translate-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: draft, targets: ['en', 'pt'] })
+        body: JSON.stringify({ plan: draft, targets: ['en', 'pt', 'fr'] })
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || 'No se pudo traducir el plan.');
