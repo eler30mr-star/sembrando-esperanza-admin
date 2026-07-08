@@ -16,20 +16,31 @@ function cleanStringList(value) {
     : [];
 }
 
+function cleanReferences(day) {
+  if (Array.isArray(day?.verses) && day.verses.length) return cleanStringList(day.verses);
+  if (Array.isArray(day?.references) && day.references.length) return cleanStringList(day.references);
+  const verse = cleanString(day?.verse);
+  return verse ? [verse] : [];
+}
+
 function cleanDays(value) {
   if (!Array.isArray(value)) return [];
 
   return value
-    .map((day, index) => ({
-      dayNumber: Number(day?.dayNumber || index + 1),
-      title: cleanString(day?.title),
-      subtitle: cleanString(day?.subtitle),
-      verse: cleanString(day?.verse),
-      text: cleanString(day?.text),
-      internalize: cleanString(day?.internalize || day?.question || day?.meditation),
-      prayer: cleanString(day?.prayer),
-      action: cleanString(day?.action)
-    }))
+    .map((day, index) => {
+      const verses = cleanReferences(day);
+      return {
+        dayNumber: Number(day?.dayNumber || index + 1),
+        title: cleanString(day?.title),
+        subtitle: cleanString(day?.subtitle),
+        verse: verses.join('; '),
+        verses,
+        text: cleanString(day?.text),
+        internalize: cleanString(day?.internalize || day?.question || day?.meditation),
+        prayer: cleanString(day?.prayer),
+        action: cleanString(day?.action)
+      };
+    })
     .filter((day) => day.title || day.verse || day.text || day.internalize || day.prayer || day.action);
 }
 
