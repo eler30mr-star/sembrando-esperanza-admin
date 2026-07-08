@@ -40,6 +40,19 @@ function setValue(plan, lang, nextValue) {
   };
 }
 
+function normalizeReferences(day) {
+  if (Array.isArray(day?.verses) && day.verses.length) {
+    return day.verses.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  if (Array.isArray(day?.references) && day.references.length) {
+    return day.references.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+
+  const verse = String(day?.verse || '').trim();
+  return verse ? [verse] : [];
+}
+
 function normalizeUploadedPlan(data) {
   const plan = Array.isArray(data) ? data[0] : data;
   if (!plan || typeof plan !== 'object') throw new Error('El JSON no contiene un plan válido.');
@@ -53,15 +66,19 @@ function normalizeUploadedPlan(data) {
     shortDescription: plan.shortDescription || plan.description || '',
     learning: Array.isArray(plan.learning) ? plan.learning : [''],
     gains: Array.isArray(plan.gains) ? plan.gains : [''],
-    days: Array.isArray(plan.days) ? plan.days.map((day) => ({
-      title: day.title || '',
-      subtitle: day.subtitle || '',
-      verse: day.verse || '',
-      text: day.text || '',
-      internalize: day.internalize || day.question || day.meditation || '',
-      prayer: day.prayer || '',
-      action: day.action || ''
-    })) : []
+    days: Array.isArray(plan.days) ? plan.days.map((day) => {
+      const verses = normalizeReferences(day);
+      return {
+        title: day.title || '',
+        subtitle: day.subtitle || '',
+        verse: verses.join('; '),
+        verses: verses.length ? verses : [''],
+        text: day.text || '',
+        internalize: day.internalize || day.question || day.meditation || '',
+        prayer: day.prayer || '',
+        action: day.action || ''
+      };
+    }) : []
   };
 }
 
