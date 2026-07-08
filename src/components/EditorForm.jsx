@@ -15,11 +15,16 @@ function createEmptyChapter() {
 }
 
 function createEmptyPlanDay() {
-  return { title: '', subtitle: '', verse: '', text: '', internalize: '', prayer: '', action: '' };
+  return { title: '', subtitle: '', verse: '', verses: [''], text: '', internalize: '', prayer: '', action: '' };
 }
 
 function normalizeList(value) {
   return Array.isArray(value) && value.length ? value : [''];
+}
+
+function normalizeReferences(day) {
+  const list = Array.isArray(day?.verses) && day.verses.length ? day.verses : [day?.verse || ''];
+  return list.length ? list : [''];
 }
 
 function normalizePlanDays(value) {
@@ -71,6 +76,39 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
     onChange({ ...value, days: days.map((day, i) => i === index ? { ...day, [field]: fieldValue } : day) });
   }
 
+  function updatePlanDayReference(dayIndex, referenceIndex, referenceValue) {
+    const days = normalizePlanDays(value.days);
+    onChange({
+      ...value,
+      days: days.map((day, i) => {
+        if (i !== dayIndex) return day;
+        const verses = normalizeReferences(day).map((item, j) => j === referenceIndex ? referenceValue : item);
+        return { ...day, verses, verse: verses.filter(Boolean).join('; ') };
+      })
+    });
+  }
+
+  function addPlanDayReference(dayIndex) {
+    const days = normalizePlanDays(value.days);
+    onChange({
+      ...value,
+      days: days.map((day, i) => i === dayIndex ? { ...day, verses: [...normalizeReferences(day), ''] } : day)
+    });
+  }
+
+  function removePlanDayReference(dayIndex, referenceIndex) {
+    const days = normalizePlanDays(value.days);
+    onChange({
+      ...value,
+      days: days.map((day, i) => {
+        if (i !== dayIndex) return day;
+        const next = normalizeReferences(day).filter((_, j) => j !== referenceIndex);
+        const verses = next.length ? next : [''];
+        return { ...day, verses, verse: verses.filter(Boolean).join('; ') };
+      })
+    });
+  }
+
   function addPlanDay() {
     onChange({ ...value, days: [...normalizePlanDays(value.days), createEmptyPlanDay()] });
   }
@@ -112,13 +150,19 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
           if (field.type === 'planDays') {
             const days = normalizePlanDays(value.days);
             return <div key={field.name} className="chapter-editor full">
-              <div className="chapter-editor-head"><div><span>{field.label}</span><p>Crea cada día con referencia bíblica, reflexión, Interioriza, oración y acción práctica.</p></div><button className="btn muted" type="button" onClick={addPlanDay}>Agregar día</button></div>
+              <div className="chapter-editor-head"><div><span>{field.label}</span><p>Crea cada día con una o varias referencias bíblicas, reflexión, Interioriza, oración y acción práctica.</p></div><button className="btn muted" type="button" onClick={addPlanDay}>Agregar día</button></div>
               <div className="chapter-list">{days.map((day, index) => <section className="chapter-card" key={index}>
                 <div className="chapter-card-head"><strong>Día {index + 1}</strong><button type="button" className="danger-link" onClick={() => removePlanDay(index)}>Eliminar</button></div>
                 <div className="nested-grid">
                   <label><span>Título del día</span><input value={day.title || ''} required onChange={(event) => updatePlanDay(index, 'title', event.target.value)} placeholder="Ejemplo: Dios está contigo" /></label>
                   <label><span>Subtítulo</span><input value={day.subtitle || ''} onChange={(event) => updatePlanDay(index, 'subtitle', event.target.value)} /></label>
-                  <label className="full"><span>Referencia bíblica</span><input value={day.verse || ''} required onChange={(event) => updatePlanDay(index, 'verse', event.target.value)} placeholder="Ejemplo: Isaías 41:10" /></label>
+                  <div className="chapter-editor full">
+                    <div className="chapter-editor-head"><div><span>Referencias bíblicas</span><p>Agrega una referencia por línea. Puede ser del mismo libro o de libros distintos.</p></div><button className="btn muted" type="button" onClick={() => addPlanDayReference(index)}>Agregar referencia</button></div>
+                    <div className="chapter-list">{normalizeReferences(day).map((reference, referenceIndex) => <section className="chapter-card compact-card" key={`ref-${index}-${referenceIndex}`}>
+                      <div className="chapter-card-head"><strong>Referencia {referenceIndex + 1}</strong><button type="button" className="danger-link" onClick={() => removePlanDayReference(index, referenceIndex)}>Eliminar</button></div>
+                      <input value={reference || ''} required={referenceIndex === 0} onChange={(event) => updatePlanDayReference(index, referenceIndex, event.target.value)} placeholder="Ejemplo: Hebreos 11:1" />
+                    </section>)}</div>
+                  </div>
                   <label className="full"><span>Reflexión</span><textarea rows={8} value={day.text || ''} required onChange={(event) => updatePlanDay(index, 'text', event.target.value)} /></label>
                   <label className="full"><span>Interioriza</span><textarea rows={3} value={day.internalize || ''} required onChange={(event) => updatePlanDay(index, 'internalize', event.target.value)} placeholder="Ejemplo: ¿Qué verdad de esta reflexión necesitas guardar hoy en tu corazón?" /></label>
                   <label className="full"><span>Oración del día</span><textarea rows={4} value={day.prayer || ''} required onChange={(event) => updatePlanDay(index, 'prayer', event.target.value)} /></label>
