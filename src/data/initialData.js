@@ -12,12 +12,14 @@ export const storyCategories = [
 export const planCategories = [
   'Fe',
   'Oración',
-  'Ansiedad',
+  'Vida Espiritual',
   'Paz',
+  'Sanidad Interior',
+  'Amor',
   'Familia',
-  'Gratitud',
-  'Esperanza',
-  'Perdón'
+  'Propósito',
+  'Jóvenes',
+  'Gratitud'
 ];
 
 export const initialCollections = {
