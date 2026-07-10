@@ -2,6 +2,29 @@ const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-sta
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
 const PUBLIC_DATA_DIR = process.env.PUBLIC_DATA_DIR || 'public/data';
 
+const PLAN_CATEGORIES = [
+  'Fe',
+  'Oración',
+  'Vida Espiritual',
+  'Paz',
+  'Sanidad Interior',
+  'Amor',
+  'Familia',
+  'Propósito',
+  'Jóvenes',
+  'Gratitud'
+];
+
+const LEGACY_CATEGORY_MAP = {
+  Ansiedad: 'Sanidad Interior',
+  Esperanza: 'Paz',
+  Perdón: 'Sanidad Interior',
+  Lectura: 'Vida Espiritual',
+  Meditación: 'Vida Espiritual',
+  Estudio: 'Vida Espiritual',
+  Reflexión: 'Vida Espiritual'
+};
+
 function send(res, status, payload) {
   res.status(status).json(payload);
 }
@@ -14,6 +37,12 @@ function cleanStringList(value) {
   return Array.isArray(value)
     ? value.map(cleanString).filter(Boolean)
     : [];
+}
+
+function normalizeCategory(value) {
+  const category = cleanString(value);
+  if (PLAN_CATEGORIES.includes(category)) return category;
+  return LEGACY_CATEGORY_MAP[category] || 'Fe';
 }
 
 function cleanReferences(day) {
@@ -69,7 +98,7 @@ function createPlanDetail(plan, language) {
     id: cleanString(plan.id),
     title: cleanString(source.title),
     slug: cleanString(source.slug || plan.slug),
-    category: cleanString(source.category) || cleanString(plan.category) || 'Fe',
+    category: normalizeCategory(source.category || plan.category),
     status: 'published',
     language,
     dayCount: days.length,
@@ -89,7 +118,7 @@ function createPlanSummary(plan, language) {
     id: plan.id,
     title: plan.title,
     slug: plan.slug,
-    category: plan.category,
+    category: normalizeCategory(plan.category),
     status: plan.status,
     language,
     dayCount: plan.dayCount,
@@ -243,6 +272,7 @@ export default async function handler(req, res) {
     send(res, 200, {
       ok: true,
       count: validPlans.length,
+      categories: PLAN_CATEGORIES,
       languages: Object.keys(grouped).filter((language) => grouped[language].length),
       commits
     });
