@@ -33,16 +33,16 @@ function cleanString(value) {
   return String(value || '').trim();
 }
 
-function cleanStringList(value) {
-  return Array.isArray(value)
-    ? value.map(cleanString).filter(Boolean)
-    : [];
-}
-
 function normalizeCategory(value) {
   const category = cleanString(value);
   if (PLAN_CATEGORIES.includes(category)) return category;
   return LEGACY_CATEGORY_MAP[category] || 'Fe';
+}
+
+function cleanStringList(value) {
+  return Array.isArray(value)
+    ? value.map(cleanString).filter(Boolean)
+    : [];
 }
 
 function cleanReferences(day) {
@@ -118,7 +118,7 @@ function createPlanSummary(plan, language) {
     id: plan.id,
     title: plan.title,
     slug: plan.slug,
-    category: normalizeCategory(plan.category),
+    category: plan.category,
     status: plan.status,
     language,
     dayCount: plan.dayCount,
@@ -173,14 +173,31 @@ async function githubRequest(path, options = {}) {
   return response;
 }
 
-async function getExistingFileSha(path) {
+async function getExistingFile(path) {
   const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
   const response = await githubRequest(`/repos/${owner}/${repo}/contents/${path}?ref=${PUBLIC_REPO_BRANCH}`);
 
   if (response.status === 404) return null;
 
   const payload = await response.json();
-  return payload.sha || null;
+  return payload || null;
+}
+
+async function getExistingFileSha(path) {
+  const file = await getExistingFile(path);
+  return file?.sha || null;
+}
+
+async function readJsonFile(path, fallback = []) {
+  const file = await getExistingFile(path);
+  if (!file?.content) return fallback;
+
+  try {
+    const text = Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8');
+    return JSON.parse(text);
+  } catch {
+    return fallback;
+  }
 }
 
 async function putJsonFile(path, data, message) {
@@ -206,6 +223,21 @@ async function putJsonFile(path, data, message) {
   return result?.commit?.sha || null;
 }
 
+async function deleteJsonFile(path, message) {
+  const sha = await getExistingFileSha(path);
+  if (!sha) return null;
+
+  const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
+  const response = await githubRequest(`/repos/${owner}/${repo}/contents/${path}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, sha, branch: PUBLIC_REPO_BRANCH })
+  });
+
+  const result = await response.json();
+  return result?.commit?.sha || null;
+}
+
 function availableLanguages(plan) {
   const languages = ['es'];
   if (plan.translations?.en) languages.push('en');
@@ -224,23 +256,9 @@ export default async function handler(req, res) {
     const plans = Array.isArray(req.body?.plans) ? req.body.plans : [];
     const checkedPlans = plans.map(getPlanIssues);
     const validPlans = plans.filter((plan, index) => checkedPlans[index].issues.length === 0);
-
-    if (!validPlans.length) {
-      const invalid = checkedPlans.map((item) => ({
-        title: item.cleaned.title || 'Plan sin título',
-        issues: item.issues
-      }));
-
-      send(res, 400, {
-        error: 'No se publicó el JSON porque no hay planes válidos. Revisa que el plan esté en Publicado, tenga slug y tenga al menos un día.',
-        received: plans.length,
-        invalid
-      });
-      return;
-    }
-
     const grouped = { es: [], en: [], pt: [], fr: [] };
     const commits = [];
+    const deleted = [];
 
     for (const plan of validPlans) {
       for (const language of availableLanguages(plan)) {
@@ -259,11 +277,26 @@ export default async function handler(req, res) {
     }
 
     for (const language of Object.keys(grouped)) {
-      if (!grouped[language].length) continue;
       const indexPath = `${PUBLIC_DATA_DIR}/${language}/plans.json`;
+      const previousIndex = await readJsonFile(indexPath, []);
+      const nextSummaries = grouped[language].map((plan) => createPlanSummary(plan, language));
+      const nextSlugs = new Set(nextSummaries.map((plan) => plan.slug));
+
+      for (const previousPlan of Array.isArray(previousIndex) ? previousIndex : []) {
+        const previousSlug = cleanString(previousPlan?.slug);
+        if (!previousSlug || nextSlugs.has(previousSlug)) continue;
+
+        const detailPath = `${PUBLIC_DATA_DIR}/${language}/plans/${previousSlug}.json`;
+        const commit = await deleteJsonFile(
+          detailPath,
+          `Remove archived ${language} plan JSON: ${previousSlug}`
+        );
+        if (commit) deleted.push({ path: detailPath, commit });
+      }
+
       const indexCommit = await putJsonFile(
         indexPath,
-        grouped[language].map((plan) => createPlanSummary(plan, language)),
+        nextSummaries,
         `Publish ${language} plans index JSON from admin`
       );
       commits.push({ path: indexPath, commit: indexCommit });
@@ -272,9 +305,9 @@ export default async function handler(req, res) {
     send(res, 200, {
       ok: true,
       count: validPlans.length,
-      categories: PLAN_CATEGORIES,
       languages: Object.keys(grouped).filter((language) => grouped[language].length),
-      commits
+      commits,
+      deleted
     });
   } catch (error) {
     send(res, 500, { error: error.message || 'No se pudo publicar el JSON.' });
