@@ -70,7 +70,6 @@ function normalizeUploadedPlan(data) {
       const verses = normalizeReferences(day);
       return {
         title: day.title || '',
-        subtitle: day.subtitle || '',
         verse: verses.join('; '),
         verses: verses.length ? verses : [''],
         text: day.text || '',
