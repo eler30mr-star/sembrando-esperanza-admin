@@ -61,7 +61,6 @@ function cleanDays(value) {
       return {
         dayNumber: Number(day?.dayNumber || index + 1),
         title: cleanString(day?.title),
-        subtitle: cleanString(day?.subtitle),
         verse: verses[0] || '',
         verses,
         references: verses,
