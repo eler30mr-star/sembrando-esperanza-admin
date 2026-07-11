@@ -15,7 +15,7 @@ function createEmptyChapter() {
 }
 
 function createEmptyPlanDay() {
-  return { title: '', subtitle: '', verse: '', verses: [''], text: '', internalize: '', prayer: '', action: '' };
+  return { title: '', verse: '', verses: [''], text: '', internalize: '', prayer: '', action: '' };
 }
 
 function normalizeList(value) {
@@ -158,8 +158,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
               <div className="chapter-list">{days.map((day, index) => <section className="chapter-card" key={index}>
                 <div className="chapter-card-head"><strong>Día {index + 1}</strong><button type="button" className="danger-link" onClick={() => removePlanDay(index)}>Eliminar</button></div>
                 <div className="nested-grid">
-                  <label><span>Título del día</span><input value={day.title || ''} required onChange={(event) => updatePlanDay(index, 'title', event.target.value)} placeholder="Ejemplo: Dios está contigo" /></label>
-                  <label><span>Subtítulo</span><input value={day.subtitle || ''} onChange={(event) => updatePlanDay(index, 'subtitle', event.target.value)} /></label>
+                  <label className="full"><span>Título del día</span><input value={day.title || ''} required onChange={(event) => updatePlanDay(index, 'title', event.target.value)} placeholder="Ejemplo: Dios está contigo" /></label>
                   <div className="chapter-editor full">
                     <div className="chapter-editor-head"><div><span>Referencias bíblicas separadas</span><p>No mezcles libros en un solo campo. Usa un campo por cada referencia.</p></div><button className="btn muted" type="button" onClick={() => addPlanDayReference(index)}>Agregar referencia</button></div>
                     <div className="chapter-list">{normalizeReferences(day).map((reference, referenceIndex) => <section className="chapter-card compact-card" key={`ref-${index}-${referenceIndex}`}>
@@ -168,7 +167,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
                     </section>)}</div>
                   </div>
                   <label className="full"><span>Reflexión</span><textarea rows={8} value={day.text || ''} required onChange={(event) => updatePlanDay(index, 'text', event.target.value)} /></label>
-                  <label className="full"><span>Interioriza</span><textarea rows={3} value={day.internalize || ''} required onChange={(event) => updatePlanDay(index, 'internalize', event.target.value)} placeholder="Ejemplo: ¿Qué verdad de esta reflexión necesitas guardar hoy en tu corazón?" /></label>
+                  <label className="full"><span>Interioriza</span><textarea rows={3} value={day.internalize || ''} required onChange={(event) => updatePlanDay(index, 'internalize', event.target.value)} placeholder="Escribe el contenido que el lector debe interiorizar y guardar en su corazón." /></label>
                   <label className="full"><span>Oración del día</span><textarea rows={4} value={day.prayer || ''} required onChange={(event) => updatePlanDay(index, 'prayer', event.target.value)} /></label>
                   <label className="full"><span>Acción práctica</span><textarea rows={3} value={day.action || ''} required onChange={(event) => updatePlanDay(index, 'action', event.target.value)} /></label>
                 </div>
