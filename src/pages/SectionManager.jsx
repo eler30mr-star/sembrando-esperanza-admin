@@ -10,9 +10,9 @@ function createEmptyPlanDay() {
   return { title: '', subtitle: '', verse: '', text: '', prayer: '', action: '' };
 }
 
-function emptyItemFor(config) {
+function emptyItemFor(config, section) {
   return config.fields.reduce((acc, field) => {
-    if (field.type === 'status') acc[field.name] = 'draft';
+    if (field.type === 'status') acc[field.name] = section === 'videos' ? 'published' : 'draft';
     else if (field.type === 'chapters') acc[field.name] = [{ title: '', content: '' }];
     else if (field.type === 'list') acc[field.name] = [''];
     else if (field.type === 'planDays') acc[field.name] = [createEmptyPlanDay()];
@@ -30,7 +30,7 @@ export default function SectionManager({ section }) {
   const [collections, setCollections] = useState(loadCollections());
   const items = collections[section] || [];
   const [editing, setEditing] = useState(null);
-  const [draft, setDraft] = useState(emptyItemFor(config));
+  const [draft, setDraft] = useState(emptyItemFor(config, section));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -43,6 +43,7 @@ export default function SectionManager({ section }) {
       const loadedItems = await loadSectionItems(section);
       if (!alive) return;
       setCollections((current) => ({ ...current, [section]: loadedItems }));
+      setDraft(emptyItemFor(config, section));
       setLoading(false);
     }
     loadItems();
@@ -57,13 +58,13 @@ export default function SectionManager({ section }) {
 
   function startCreate() {
     setEditing('new');
-    setDraft(emptyItemFor(config));
+    setDraft(emptyItemFor(config, section));
     setMessage('');
   }
 
   function startEdit(item) {
     setEditing(item.id);
-    setDraft({ ...emptyItemFor(config), ...item });
+    setDraft({ ...emptyItemFor(config, section), ...item });
     setMessage('');
   }
 
@@ -99,10 +100,14 @@ export default function SectionManager({ section }) {
 
       setCollections((current) => ({ ...current, [section]: nextItems }));
       setEditing(null);
-      setDraft(emptyItemFor(config));
+      setDraft(emptyItemFor(config, section));
 
       if (section === 'plans') {
         setMessage('Plan guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.');
+      } else if (section === 'videos') {
+        setMessage(savedItem.status === 'published'
+          ? 'Video guardado y publicado. Ya está disponible para la galería pública.'
+          : 'Video guardado como borrador. No aparecerá en la galería pública hasta cambiarlo a Publicado.');
       } else {
         setMessage(firebaseReady
           ? 'Contenido guardado correctamente.'
@@ -133,7 +138,9 @@ export default function SectionManager({ section }) {
 
       <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>
         {firebaseReady
-          ? 'Firebase conectado. Al guardar un plan también se actualiza automáticamente el JSON en GitHub.'
+          ? section === 'videos'
+            ? 'Firebase conectado. Los videos guardados como Publicado aparecen automáticamente en la web pública.'
+            : 'Firebase conectado. Al guardar un plan también se actualiza automáticamente el JSON en GitHub.'
           : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
       </p>
 
