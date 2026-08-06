@@ -1,10 +1,9 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { signOut } from 'firebase/auth';
-import { BookOpen, Home, Image, LayoutDashboard, LogOut, PenLine, PlayCircle, Settings, ShieldCheck, Sparkles } from 'lucide-react';
+import { BookOpen, Home, Image, LogOut, PenLine, PlayCircle, Settings, ShieldCheck, Sparkles } from 'lucide-react';
 import { auth } from '../services/firebase.js';
 
 const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/planes', label: 'Planes', icon: BookOpen },
   { to: '/historias', label: 'Historias', icon: PenLine },
   { to: '/videos', label: 'Videos', icon: PlayCircle },
@@ -38,7 +37,7 @@ export default function AdminLayout() {
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
-                <NavLink key={item.to} to={item.to} end={item.to === '/'}>
+                <NavLink key={item.to} to={item.to}>
                   <Icon size={18} /> {item.label}
                 </NavLink>
               );
