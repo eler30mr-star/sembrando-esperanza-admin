@@ -123,12 +123,14 @@ export default function SectionManager({ section }) {
 
   return (
     <section className="admin-page">
-      <div className="section-manager-head">
-        <div className="page-title">
-          <span>Administrar</span>
-          <h2>{config.label}</h2>
-          <p>{config.description}</p>
-        </div>
+      <div className={`section-manager-head ${section === 'plans' ? 'plans-compact-head' : ''}`}>
+        {section !== 'plans' && (
+          <div className="page-title">
+            <span>Administrar</span>
+            <h2>{config.label}</h2>
+            <p>{config.description}</p>
+          </div>
+        )}
         <div className="section-actions">
           {section === 'plans' && (
             <button className="btn muted" type="button" onClick={publishPlansJson} disabled={publishing || loading}>
