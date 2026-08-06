@@ -48,13 +48,6 @@ export default function AdminLayout() {
       </aside>
 
       <div className="admin-main">
-        <header className="admin-topbar">
-          <div>
-            <span>Panel privado</span>
-            <h1>Gestión de contenido cristiano</h1>
-          </div>
-          <a href="/" className="status-pill">Activo</a>
-        </header>
         <Outlet />
       </div>
     </div>
