@@ -32,17 +32,20 @@ export default function AdminLayout() {
             <small>Panel Admin</small>
           </div>
         </div>
-        <nav className="admin-nav">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink key={item.to} to={item.to} end={item.to === '/'}>
-                <Icon size={18} /> {item.label}
-              </NavLink>
-            );
-          })}
-        </nav>
-        <button className="logout" type="button" onClick={logout}><LogOut size={18} /> Salir</button>
+
+        <div className="admin-nav-strip">
+          <nav className="admin-nav">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink key={item.to} to={item.to} end={item.to === '/'}>
+                  <Icon size={18} /> {item.label}
+                </NavLink>
+              );
+            })}
+          </nav>
+          <button className="logout" type="button" onClick={logout}><LogOut size={18} /> Salir</button>
+        </div>
       </aside>
 
       <div className="admin-main">
