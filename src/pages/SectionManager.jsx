@@ -33,7 +33,6 @@ export default function SectionManager({ section }) {
   const [draft, setDraft] = useState(emptyItemFor(config));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [publishing, setPublishing] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -75,7 +74,7 @@ export default function SectionManager({ section }) {
       body: JSON.stringify({ plans: plansToPublish })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || 'No se pudo publicar el JSON.');
+    if (!response.ok) throw new Error(payload.error || 'No se pudo actualizar el JSON en GitHub.');
     return payload;
   }
 
@@ -83,41 +82,37 @@ export default function SectionManager({ section }) {
     event.preventDefault();
     setSaving(true);
     setMessage('');
+
     try {
-      const nextItem = editing === 'new' ? { ...draft, id: createId(section.slice(0, -1) || section) } : { ...draft };
+      const nextItem = editing === 'new'
+        ? { ...draft, id: createId(section.slice(0, -1) || section) }
+        : { ...draft };
+
       const savedItem = await saveSectionItem(section, nextItem);
-      const nextItems = editing === 'new' ? [savedItem, ...items] : items.map((item) => item.id === editing ? savedItem : item);
+      const nextItems = editing === 'new'
+        ? [savedItem, ...items]
+        : items.map((item) => item.id === editing ? savedItem : item);
+
+      if (section === 'plans') {
+        await publishPlansList(nextItems);
+      }
+
       setCollections((current) => ({ ...current, [section]: nextItems }));
       setEditing(null);
       setDraft(emptyItemFor(config));
 
       if (section === 'plans') {
-        setPublishing(true);
-        await publishPlansList(nextItems);
-        setMessage('Plan guardado y JSON publicado automáticamente. La web pública se actualizará en unos momentos.');
+        setMessage('Plan guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.');
       } else {
-        setMessage(firebaseReady ? 'Contenido guardado correctamente.' : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
+        setMessage(firebaseReady
+          ? 'Contenido guardado correctamente.'
+          : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
       }
     } catch (error) {
       console.error('No se pudo guardar o publicar el contenido.', error);
-      setMessage(error.message || 'No se pudo guardar o publicar. Revisa Firebase, GitHub o variables Vercel.');
+      setMessage(error.message || 'No se pudo completar el guardado. Revisa Firebase, GitHub o las variables de Vercel.');
     } finally {
       setSaving(false);
-      setPublishing(false);
-    }
-  }
-
-  async function publishPlansJson() {
-    setPublishing(true);
-    setMessage('');
-    try {
-      const payload = await publishPlansList(items);
-      setMessage(`JSON publicado correctamente con ${payload.count} planes publicados. Vercel actualizará la web pública en unos momentos.`);
-    } catch (error) {
-      console.error('No se pudo publicar el JSON.', error);
-      setMessage(error.message || 'No se pudo publicar el JSON.');
-    } finally {
-      setPublishing(false);
     }
   }
 
@@ -132,17 +127,14 @@ export default function SectionManager({ section }) {
           </div>
         )}
         <div className="section-actions">
-          {section === 'plans' && (
-            <button className="btn muted" type="button" onClick={publishPlansJson} disabled={publishing || loading}>
-              {publishing ? 'Publicando...' : 'Publicar JSON'}
-            </button>
-          )}
           <button className="btn primary" type="button" onClick={startCreate}>Nuevo</button>
         </div>
       </div>
 
       <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>
-        {firebaseReady ? 'Firebase conectado: aquí editas los planes. La web pública lee el JSON publicado.' : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
+        {firebaseReady
+          ? 'Firebase conectado. Al guardar un plan también se actualiza automáticamente el JSON en GitHub.'
+          : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
       </p>
 
       <div className="mini-stats">
@@ -163,7 +155,7 @@ export default function SectionManager({ section }) {
           onSubmit={save}
           onCancel={() => setEditing(null)}
           mode={editing === 'new' ? 'create' : 'edit'}
-          saving={saving || publishing}
+          saving={saving}
         />
       )}
 
