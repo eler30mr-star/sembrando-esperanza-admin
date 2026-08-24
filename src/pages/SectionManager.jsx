@@ -4,7 +4,7 @@ import PlanLanguageEditor from '../components/PlanLanguageEditor.jsx';
 import { sectionConfig } from '../data/initialData.js';
 import { createId, loadCollections } from '../services/localStore.js';
 import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
-import { firebaseReady } from '../services/firebase.js';
+import { auth, firebaseReady } from '../services/firebase.js';
 
 function createEmptyPlanDay() {
   return { title: '', subtitle: '', verse: '', text: '', prayer: '', action: '' };
@@ -33,6 +33,7 @@ export default function SectionManager({ section }) {
   const [draft, setDraft] = useState(emptyItemFor(config, section));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState('');
 
@@ -70,14 +71,36 @@ export default function SectionManager({ section }) {
   }
 
   async function publishPlansList(plansToPublish) {
+    const user = auth?.currentUser;
+    if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
+
+    const idToken = await user.getIdToken();
     const response = await fetch('/api/publish-plans', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`
+      },
       body: JSON.stringify({ plans: plansToPublish })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || 'No se pudo actualizar el JSON en GitHub.');
     return payload;
+  }
+
+  async function syncPlans() {
+    setSyncing(true);
+    setMessage('');
+
+    try {
+      const result = await publishPlansList(items);
+      setMessage(`JSON público sincronizado correctamente en el commit ${result.commit?.slice(0, 7) || 'nuevo'}.`);
+    } catch (error) {
+      console.error('No se pudo sincronizar el JSON público.', error);
+      setMessage(error.message || 'No se pudo sincronizar el JSON público.');
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function save(event) {
@@ -171,6 +194,16 @@ export default function SectionManager({ section }) {
           </div>
         )}
         <div className="section-actions">
+          {section === 'plans' && (
+            <button
+              className="btn muted"
+              type="button"
+              onClick={syncPlans}
+              disabled={syncing || loading}
+            >
+              {syncing ? 'Sincronizando...' : 'Sincronizar JSON'}
+            </button>
+          )}
           <button className="btn primary" type="button" onClick={startCreate}>Nuevo</button>
         </div>
       </div>

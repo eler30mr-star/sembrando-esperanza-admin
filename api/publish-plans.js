@@ -147,11 +147,14 @@ function getPlanIssues(plan) {
   return { cleaned, issues };
 }
 
-async function githubRequest(path, options = {}) {
+async function githubRequest(path, requestOptions = {}) {
   const token = process.env.GITHUB_TOKEN;
+  const { allowNotFound = false, ...options } = requestOptions;
 
   if (!token) {
-    throw new Error('Falta configurar GITHUB_TOKEN en Vercel del admin.');
+    const error = new Error('Falta configurar GITHUB_TOKEN en Vercel del admin.');
+    error.status = 500;
+    throw error;
   }
 
   const response = await fetch(`https://api.github.com${path}`, {
@@ -164,27 +167,75 @@ async function githubRequest(path, options = {}) {
     }
   });
 
-  if (!response.ok && response.status !== 404) {
+  if (!response.ok && !(allowNotFound && response.status === 404)) {
     const text = await response.text();
-    throw new Error(`GitHub error ${response.status}: ${text}`);
+    const error = new Error(`GitHub error ${response.status}: ${text}`);
+    error.status = response.status;
+    throw error;
   }
 
   return response;
 }
 
-async function getExistingFile(path) {
-  const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
-  const response = await githubRequest(`/repos/${owner}/${repo}/contents/${path}?ref=${PUBLIC_REPO_BRANCH}`);
-
-  if (response.status === 404) return null;
-
-  const payload = await response.json();
-  return payload || null;
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getExistingFileSha(path) {
-  const file = await getExistingFile(path);
-  return file?.sha || null;
+async function requireAdmin(req) {
+  const authorization = String(req.headers?.authorization || '');
+  const idToken = authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+
+  if (!idToken) {
+    const error = new Error('Sesión de administrador requerida.');
+    error.status = 401;
+    throw error;
+  }
+
+  const apiKey = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY;
+  const allowedEmail = String(process.env.VITE_ADMIN_EMAIL || 'ceo.developer.appsem@gmail.com').toLowerCase();
+
+  if (!apiKey) {
+    const error = new Error('Falta configurar FIREBASE_API_KEY o VITE_FIREBASE_API_KEY en Vercel.');
+    error.status = 500;
+    throw error;
+  }
+
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${encodeURIComponent(apiKey)}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken })
+    }
+  );
+
+  if (!response.ok) {
+    const error = new Error('La sesión de Firebase no es válida o expiró.');
+    error.status = 401;
+    throw error;
+  }
+
+  const payload = await response.json();
+  const user = payload.users?.[0];
+
+  if (!user?.email || user.email.toLowerCase() !== allowedEmail) {
+    const error = new Error('Este usuario no está autorizado para publicar.');
+    error.status = 403;
+    throw error;
+  }
+
+  return user;
+}
+
+async function getExistingFile(path) {
+  const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
+  const response = await githubRequest(
+    `/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(PUBLIC_REPO_BRANCH)}`,
+    { allowNotFound: true }
+  );
+
+  if (response.status === 404) return null;
+  return response.json();
 }
 
 async function readJsonFile(path, fallback = []) {
@@ -192,49 +243,96 @@ async function readJsonFile(path, fallback = []) {
   if (!file?.content) return fallback;
 
   try {
-    const text = Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8');
+    const text = Buffer.from(file.content.replace(/\\n/g, ''), 'base64').toString('utf8');
     return JSON.parse(text);
   } catch {
     return fallback;
   }
 }
 
-async function putJsonFile(path, data, message) {
-  const sha = await getExistingFileSha(path);
-  const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
-  const json = `${JSON.stringify(data, null, 2)}\n`;
-
-  const body = {
-    message,
-    content: Buffer.from(json, 'utf8').toString('base64'),
-    branch: PUBLIC_REPO_BRANCH
+function jsonFileChange(path, data) {
+  return {
+    path,
+    mode: '100644',
+    type: 'blob',
+    content: `${JSON.stringify(data, null, 2)}\\n`
   };
-
-  if (sha) body.sha = sha;
-
-  const response = await githubRequest(`/repos/${owner}/${repo}/contents/${path}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  const result = await response.json();
-  return result?.commit?.sha || null;
 }
 
-async function deleteJsonFile(path, message) {
-  const sha = await getExistingFileSha(path);
-  if (!sha) return null;
-
+async function commitJsonChanges(changes, message) {
   const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
-  const response = await githubRequest(`/repos/${owner}/${repo}/contents/${path}`, {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, sha, branch: PUBLIC_REPO_BRANCH })
-  });
+  const encodedBranch = PUBLIC_REPO_BRANCH.split('/').map(encodeURIComponent).join('/');
+  const maxAttempts = 4;
 
-  const result = await response.json();
-  return result?.commit?.sha || null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const refResponse = await githubRequest(
+        `/repos/${owner}/${repo}/git/ref/heads/${encodedBranch}`
+      );
+      const ref = await refResponse.json();
+      const headSha = ref.object?.sha;
+
+      const commitResponse = await githubRequest(
+        `/repos/${owner}/${repo}/git/commits/${headSha}`
+      );
+      const currentCommit = await commitResponse.json();
+      const baseTreeSha = currentCommit.tree?.sha;
+
+      const treeResponse = await githubRequest(
+        `/repos/${owner}/${repo}/git/trees/${baseTreeSha}?recursive=1`
+      );
+      const currentTree = await treeResponse.json();
+      const existingPaths = new Set(
+        (currentTree.tree || [])
+          .filter((entry) => entry.type === 'blob')
+          .map((entry) => entry.path)
+      );
+      const applicableChanges = changes.filter(
+        (change) => change.sha !== null || existingPaths.has(change.path)
+      );
+
+      const createTreeResponse = await githubRequest(
+        `/repos/${owner}/${repo}/git/trees`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ base_tree: baseTreeSha, tree: applicableChanges })
+        }
+      );
+      const nextTree = await createTreeResponse.json();
+
+      const createCommitResponse = await githubRequest(
+        `/repos/${owner}/${repo}/git/commits`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message,
+            tree: nextTree.sha,
+            parents: [headSha]
+          })
+        }
+      );
+      const nextCommit = await createCommitResponse.json();
+
+      await githubRequest(
+        `/repos/${owner}/${repo}/git/refs/heads/${encodedBranch}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sha: nextCommit.sha, force: false })
+        }
+      );
+
+      return nextCommit.sha;
+    } catch (error) {
+      const branchMoved = error.status === 409 || error.status === 422;
+      if (!branchMoved || attempt === maxAttempts) throw error;
+      await sleep(150 * attempt);
+    }
+  }
+
+  throw new Error('No se pudo actualizar la rama después de varios intentos.');
 }
 
 function availableLanguages(plan) {
@@ -252,26 +350,29 @@ export default async function handler(req, res) {
   }
 
   try {
+    await requireAdmin(req);
+
     const plans = Array.isArray(req.body?.plans) ? req.body.plans : [];
     const checkedPlans = plans.map(getPlanIssues);
     const validPlans = plans.filter((plan, index) => checkedPlans[index].issues.length === 0);
     const grouped = { es: [], en: [], pt: [], fr: [] };
-    const commits = [];
+    const changes = new Map();
     const deleted = [];
 
     for (const plan of validPlans) {
       for (const language of availableLanguages(plan)) {
         const detail = createPlanDetail(plan, language);
         if (!detail.title || !detail.slug || !detail.days.length) continue;
-        grouped[language].push(detail);
 
+        if (grouped[language].some((current) => current.slug === detail.slug)) {
+          const error = new Error(`Hay más de un plan con el slug "${detail.slug}" en ${language}.`);
+          error.status = 400;
+          throw error;
+        }
+
+        grouped[language].push(detail);
         const detailPath = `${PUBLIC_DATA_DIR}/${language}/plans/${detail.slug}.json`;
-        const commit = await putJsonFile(
-          detailPath,
-          detail,
-          `Publish ${language} plan JSON: ${detail.slug}`
-        );
-        commits.push({ path: detailPath, commit });
+        changes.set(detailPath, jsonFileChange(detailPath, detail));
       }
     }
 
@@ -286,29 +387,34 @@ export default async function handler(req, res) {
         if (!previousSlug || nextSlugs.has(previousSlug)) continue;
 
         const detailPath = `${PUBLIC_DATA_DIR}/${language}/plans/${previousSlug}.json`;
-        const commit = await deleteJsonFile(
-          detailPath,
-          `Remove archived ${language} plan JSON: ${previousSlug}`
-        );
-        if (commit) deleted.push({ path: detailPath, commit });
+        changes.set(detailPath, {
+          path: detailPath,
+          mode: '100644',
+          type: 'blob',
+          sha: null
+        });
+        deleted.push(detailPath);
       }
 
-      const indexCommit = await putJsonFile(
-        indexPath,
-        nextSummaries,
-        `Publish ${language} plans index JSON from admin`
-      );
-      commits.push({ path: indexPath, commit: indexCommit });
+      changes.set(indexPath, jsonFileChange(indexPath, nextSummaries));
     }
+
+    const changedFiles = [...changes.keys()];
+    const commit = await commitJsonChanges(
+      [...changes.values()],
+      'Publish plan JSON atomically from admin'
+    );
 
     send(res, 200, {
       ok: true,
       count: validPlans.length,
       languages: Object.keys(grouped).filter((language) => grouped[language].length),
-      commits,
+      commit,
+      changedFiles,
       deleted
     });
   } catch (error) {
-    send(res, 500, { error: error.message || 'No se pudo publicar el JSON.' });
+    const status = Number(error.status) || 500;
+    send(res, status, { error: error.message || 'No se pudo publicar el JSON.' });
   }
 }
