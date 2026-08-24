@@ -3,7 +3,7 @@ import EditorForm from '../components/EditorForm.jsx';
 import PlanLanguageEditor from '../components/PlanLanguageEditor.jsx';
 import { sectionConfig } from '../data/initialData.js';
 import { createId, loadCollections } from '../services/localStore.js';
-import { loadSectionItems, saveSectionItem } from '../services/contentService.js';
+import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
 import { firebaseReady } from '../services/firebase.js';
 
 function createEmptyPlanDay() {
@@ -33,6 +33,7 @@ export default function SectionManager({ section }) {
   const [draft, setDraft] = useState(emptyItemFor(config, section));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -121,6 +122,44 @@ export default function SectionManager({ section }) {
     }
   }
 
+
+  async function remove(item) {
+    const title = getPrimaryTitle(item);
+    const confirmed = window.confirm(`¿Eliminar "${title}" definitivamente? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+
+    const nextItems = items.filter((current) => current.id !== item.id);
+    setDeletingId(item.id);
+    setMessage('');
+
+    try {
+      await deleteSectionItem(section, item.id);
+      setCollections((current) => ({ ...current, [section]: nextItems }));
+
+      if (editing === item.id) {
+        setEditing(null);
+        setDraft(emptyItemFor(config, section));
+      }
+
+      if (section === 'plans') {
+        try {
+          await publishPlansList(nextItems);
+          setMessage('Plan eliminado de Firebase y de los JSON públicos.');
+        } catch (publishError) {
+          console.error('El plan se eliminó de Firebase, pero falló la publicación en GitHub.', publishError);
+          setMessage(`El plan se eliminó de Firebase, pero no se pudo actualizar el JSON público: ${publishError.message}`);
+        }
+      } else {
+        setMessage('Contenido eliminado definitivamente.');
+      }
+    } catch (error) {
+      console.error('No se pudo eliminar el contenido.', error);
+      setMessage(error.message || 'No se pudo eliminar el contenido.');
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <section className="admin-page">
       <div className={`section-manager-head ${section === 'plans' ? 'plans-compact-head' : ''}`}>
@@ -187,7 +226,19 @@ export default function SectionManager({ section }) {
                 <td><strong>{getPrimaryTitle(item)}</strong><small>{item.shortDescription || item.url || item.text || ''}</small></td>
                 <td>{item.category || item.theme || item.moment || '—'}</td>
                 <td><span className={`status ${item.status || 'draft'}`}>{item.status || 'draft'}</span></td>
-                <td><div className="row-actions"><button type="button" onClick={() => startEdit(item)}>Editar</button></div></td>
+                <td>
+                  <div className="row-actions">
+                    <button type="button" onClick={() => startEdit(item)} disabled={deletingId === item.id}>Editar</button>
+                    <button
+                      type="button"
+                      className="danger-link"
+                      onClick={() => remove(item)}
+                      disabled={deletingId === item.id}
+                    >
+                      {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {items.length === 0 && !loading && <tr><td colSpan="4" className="empty-state">No hay contenido todavía.</td></tr>}
