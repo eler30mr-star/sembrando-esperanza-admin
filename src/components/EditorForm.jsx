@@ -179,7 +179,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
 
           return <label key={field.name} className={field.type === 'editor' || field.type === 'textarea' ? 'full' : ''}>
             <span>{field.label}</span>
-            {field.type === 'status' ? <select {...commonProps}><option value="draft">Borrador</option><option value="published">Publicado</option><option value="archived">Archivado</option></select>
+            {field.type === 'status' ? <select {...commonProps}><option value="draft">Borrador</option><option value="published">Publicado</option></select>
               : field.type === 'select' ? <select {...commonProps}><option value="">Selecciona una opción</option>{(field.options || []).map((option) => <option key={option} value={option}>{option}</option>)}</select>
               : field.name === 'slug' ? <div className="slug-row"><input type="text" {...commonProps} /><button className="btn muted" type="button" onClick={generateSlug}>Generar</button></div>
               : field.type === 'textarea' || field.type === 'editor' ? <textarea rows={field.type === 'editor' ? 10 : 4} {...commonProps} />
