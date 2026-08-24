@@ -147,6 +147,8 @@ export default function SectionManager({ section }) {
 
 
   async function remove(item) {
+    if (deletingId || saving || syncing) return;
+
     const title = getPrimaryTitle(item);
     const confirmed = window.confirm(`¿Eliminar "${title}" definitivamente? Esta acción no se puede deshacer.`);
     if (!confirmed) return;
@@ -156,7 +158,27 @@ export default function SectionManager({ section }) {
     setMessage('');
 
     try {
-      await deleteSectionItem(section, item.id);
+      if (section === 'plans') {
+        await publishPlansList(nextItems);
+
+        try {
+          await deleteSectionItem(section, item.id);
+        } catch (firebaseError) {
+          try {
+            await publishPlansList(items);
+          } catch (rollbackError) {
+            console.error('No se pudo restaurar el JSON después del fallo de Firebase.', rollbackError);
+            throw new Error(
+              `Firebase no eliminó el plan y tampoco se pudo restaurar el JSON público: ${rollbackError.message}`
+            );
+          }
+
+          throw firebaseError;
+        }
+      } else {
+        await deleteSectionItem(section, item.id);
+      }
+
       setCollections((current) => ({ ...current, [section]: nextItems }));
 
       if (editing === item.id) {
@@ -164,20 +186,18 @@ export default function SectionManager({ section }) {
         setDraft(emptyItemFor(config, section));
       }
 
-      if (section === 'plans') {
-        try {
-          await publishPlansList(nextItems);
-          setMessage('Plan eliminado de Firebase y de los JSON públicos.');
-        } catch (publishError) {
-          console.error('El plan se eliminó de Firebase, pero falló la publicación en GitHub.', publishError);
-          setMessage(`El plan se eliminó de Firebase, pero no se pudo actualizar el JSON público: ${publishError.message}`);
-        }
-      } else {
-        setMessage('Contenido eliminado definitivamente.');
-      }
+      setMessage(
+        section === 'plans'
+          ? 'Plan eliminado de Firebase y de los JSON públicos.'
+          : 'Contenido eliminado definitivamente.'
+      );
     } catch (error) {
       console.error('No se pudo eliminar el contenido.', error);
-      setMessage(error.message || 'No se pudo eliminar el contenido.');
+      setMessage(
+        section === 'plans'
+          ? `No se eliminó el plan. Firebase conserva el registro: ${error.message}`
+          : (error.message || 'No se pudo eliminar el contenido.')
+      );
     } finally {
       setDeletingId(null);
     }
@@ -199,12 +219,12 @@ export default function SectionManager({ section }) {
               className="btn muted"
               type="button"
               onClick={syncPlans}
-              disabled={syncing || loading}
+              disabled={syncing || loading || saving || Boolean(deletingId)}
             >
               {syncing ? 'Sincronizando...' : 'Sincronizar JSON'}
             </button>
           )}
-          <button className="btn primary" type="button" onClick={startCreate}>Nuevo</button>
+          <button className="btn primary" type="button" onClick={startCreate} disabled={saving || syncing || Boolean(deletingId)}>Nuevo</button>
         </div>
       </div>
 
@@ -261,12 +281,12 @@ export default function SectionManager({ section }) {
                 <td><span className={`status ${item.status || 'draft'}`}>{item.status || 'draft'}</span></td>
                 <td>
                   <div className="row-actions">
-                    <button type="button" onClick={() => startEdit(item)} disabled={deletingId === item.id}>Editar</button>
+                    <button type="button" onClick={() => startEdit(item)} disabled={Boolean(deletingId) || saving || syncing}>Editar</button>
                     <button
                       type="button"
                       className="danger-link"
                       onClick={() => remove(item)}
-                      disabled={deletingId === item.id}
+                      disabled={Boolean(deletingId) || saving || syncing}
                     >
                       {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
                     </button>
