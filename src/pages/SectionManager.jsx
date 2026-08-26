@@ -88,6 +88,24 @@ export default function SectionManager({ section }) {
     return payload;
   }
 
+  async function deletePublishedPlan(planId) {
+    const user = auth?.currentUser;
+    if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
+
+    const idToken = await user.getIdToken();
+    const response = await fetch('/api/delete-plan', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ planId })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'No se pudo eliminar el plan del JSON público.');
+    return payload;
+  }
+
   async function syncPlans() {
     setSyncing(true);
     setMessage('');
@@ -145,7 +163,6 @@ export default function SectionManager({ section }) {
     }
   }
 
-
   async function remove(item) {
     if (deletingId || saving || syncing) return;
 
@@ -158,26 +175,7 @@ export default function SectionManager({ section }) {
     setMessage('');
 
     try {
-      if (section === 'plans') {
-        await publishPlansList(nextItems);
-
-        try {
-          await deleteSectionItem(section, item.id);
-        } catch (firebaseError) {
-          try {
-            await publishPlansList(items);
-          } catch (rollbackError) {
-            console.error('No se pudo restaurar el JSON después del fallo de Firebase.', rollbackError);
-            throw new Error(
-              `Firebase no eliminó el plan y tampoco se pudo restaurar el JSON público: ${rollbackError.message}`
-            );
-          }
-
-          throw firebaseError;
-        }
-      } else {
-        await deleteSectionItem(section, item.id);
-      }
+      await deleteSectionItem(section, item.id);
 
       setCollections((current) => ({ ...current, [section]: nextItems }));
 
@@ -186,18 +184,20 @@ export default function SectionManager({ section }) {
         setDraft(emptyItemFor(config, section));
       }
 
-      setMessage(
-        section === 'plans'
-          ? 'Plan eliminado de Firebase y de los JSON públicos.'
-          : 'Contenido eliminado definitivamente.'
-      );
+      if (section === 'plans') {
+        try {
+          await deletePublishedPlan(item.id);
+          setMessage('Plan eliminado definitivamente de Firebase y de los JSON públicos.');
+        } catch (publicError) {
+          console.error('El plan se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
+          setMessage(`Plan eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
+        }
+      } else {
+        setMessage('Contenido eliminado definitivamente.');
+      }
     } catch (error) {
-      console.error('No se pudo eliminar el contenido.', error);
-      setMessage(
-        section === 'plans'
-          ? `No se eliminó el plan. Firebase conserva el registro: ${error.message}`
-          : (error.message || 'No se pudo eliminar el contenido.')
-      );
+      console.error('No se pudo eliminar el contenido de Firebase.', error);
+      setMessage(error.message || 'No se pudo eliminar el contenido de Firebase.');
     } finally {
       setDeletingId(null);
     }
