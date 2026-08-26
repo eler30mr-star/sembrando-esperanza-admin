@@ -35,7 +35,7 @@ function normalizePlanDays(value) {
   return Array.isArray(value) && value.length ? value : [createEmptyPlanDay()];
 }
 
-export default function EditorForm({ config, value, onChange, onSubmit, onCancel, mode, saving = false }) {
+export default function EditorForm({ config, value, onChange, onSubmit, onCancel, mode, saving = false, hideStatus = false, hideActions = false, formId }) {
   function updateField(name, fieldValue) {
     onChange({ ...value, [name]: fieldValue });
   }
@@ -123,11 +123,13 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
   }
 
   return (
-    <form className="editor-form" onSubmit={onSubmit}>
+    <form id={formId} className="editor-form" onSubmit={onSubmit}>
       <div className="form-header"><div><span>{mode === 'edit' ? 'Editar' : 'Nuevo contenido'}</span><h2>{config.singular}</h2></div></div>
 
       <div className="form-grid">
         {config.fields.map((field) => {
+          if (hideStatus && field.type === 'status') return null;
+
           if (field.type === 'chapters') {
             const chapters = Array.isArray(value.chapters) && value.chapters.length ? value.chapters : [createEmptyChapter()];
             return <div key={field.name} className="chapter-editor full">
@@ -188,7 +190,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
         })}
       </div>
 
-      <div className="form-actions"><button type="button" className="btn muted" onClick={onCancel} disabled={saving}>Cancelar</button><button type="submit" className="btn primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button></div>
+      {!hideActions && <div className="form-actions"><button type="button" className="btn muted" onClick={onCancel} disabled={saving}>Cancelar</button><button type="submit" className="btn primary" disabled={saving}>{saving ? 'Guardando...' : 'Guardar'}</button></div>}
     </form>
   );
 }
