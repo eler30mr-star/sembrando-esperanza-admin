@@ -85,6 +85,7 @@ export default function PlanLanguageEditor(props) {
   const { config, draft, setDraft, onSubmit, onCancel, mode, saving, setMessage } = props;
   const [lang, setLang] = useState('es');
   const fileInputRef = useRef(null);
+  const currentStatus = draft.status || 'draft';
 
   async function loadJsonFile(event) {
     const file = event.target.files?.[0];
@@ -112,10 +113,30 @@ export default function PlanLanguageEditor(props) {
             </button>
           ))}
         </div>
-        <div className="json-upload-actions">
+        <div
+          className="json-upload-actions"
+          style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap' }}
+        >
+          <label style={{ minWidth: 180 }}>
+            <span>Estado</span>
+            <select
+              value={currentStatus}
+              onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))}
+              disabled={saving}
+            >
+              <option value="draft">Borrador</option>
+              <option value="published">Publicado</option>
+            </select>
+          </label>
           <input ref={fileInputRef} type="file" accept="application/json,.json" hidden onChange={loadJsonFile} />
           <button className="btn muted" type="button" onClick={() => fileInputRef.current?.click()} disabled={saving}>
             Subir JSON del idioma
+          </button>
+          <button className="btn muted" type="button" onClick={onCancel} disabled={saving}>
+            Cancelar
+          </button>
+          <button className="btn primary" type="submit" form="plan-editor-form" disabled={saving}>
+            {saving ? 'Guardando...' : currentStatus === 'published' ? 'Guardar y publicar' : 'Guardar borrador'}
           </button>
         </div>
       </div>
@@ -127,6 +148,9 @@ export default function PlanLanguageEditor(props) {
         onCancel={onCancel}
         mode={mode}
         saving={saving}
+        hideStatus
+        hideActions
+        formId="plan-editor-form"
       />
     </>
   );
