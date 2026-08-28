@@ -25,6 +25,8 @@ function getPrimaryTitle(item) {
   return item.title || item.reference || item.theme || 'Contenido sin título';
 }
 
+const jsonSections = new Set(['plans', 'videos', 'stories']);
+
 export default function SectionManager({ section }) {
   const config = sectionConfig[section];
   const [collections, setCollections] = useState(loadCollections());
@@ -70,39 +72,31 @@ export default function SectionManager({ section }) {
     setMessage('');
   }
 
-  async function publishPlansList(plansToPublish) {
+  async function publishJson(sectionName, nextItems) {
     const user = auth?.currentUser;
     if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
 
+    const configBySection = {
+      plans: { endpoint: '/api/publish-plans', bodyKey: 'plans', label: 'planes' },
+      videos: { endpoint: '/api/publish-videos', bodyKey: 'videos', label: 'videos' },
+      stories: { endpoint: '/api/publish-stories', bodyKey: 'stories', label: 'historias' }
+    };
+    const publishConfig = configBySection[sectionName];
+    if (!publishConfig) return null;
+
     const idToken = await user.getIdToken();
-    const response = await fetch('/api/publish-plans', {
+    const response = await fetch(publishConfig.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${idToken}`
       },
-      body: JSON.stringify({ plans: plansToPublish })
+      body: JSON.stringify({ [publishConfig.bodyKey]: nextItems })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || 'No se pudo actualizar el JSON en GitHub.');
-    return payload;
-  }
-
-  async function publishVideosList(videosToPublish) {
-    const user = auth?.currentUser;
-    if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
-
-    const idToken = await user.getIdToken();
-    const response = await fetch('/api/publish-videos', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${idToken}`
-      },
-      body: JSON.stringify({ videos: videosToPublish })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || 'No se pudo actualizar el JSON de videos en GitHub.');
+    if (!response.ok) {
+      throw new Error(payload.error || `No se pudo actualizar el JSON de ${publishConfig.label} en GitHub.`);
+    }
     return payload;
   }
 
@@ -127,12 +121,9 @@ export default function SectionManager({ section }) {
   async function syncJson() {
     setSyncing(true);
     setMessage('');
-
     try {
-      const result = section === 'videos'
-        ? await publishVideosList(items)
-        : await publishPlansList(items);
-      setMessage(`JSON público sincronizado correctamente en el commit ${result.commit?.slice(0, 7) || 'nuevo'}.`);
+      const result = await publishJson(section, items);
+      setMessage(`JSON público sincronizado correctamente en el commit ${result?.commit?.slice(0, 7) || 'nuevo'}.`);
     } catch (error) {
       console.error('No se pudo sincronizar el JSON público.', error);
       setMessage(error.message || 'No se pudo sincronizar el JSON público.');
@@ -148,30 +139,28 @@ export default function SectionManager({ section }) {
 
     try {
       const nextItem = editing === 'new'
-        ? { ...draft, id: createId(section.slice(0, -1) || section) }
-        : { ...draft };
+        ? { ...draft, id: createId(section.slice(0, -1) || section), updatedAtMs: Date.now() }
+        : { ...draft, updatedAtMs: Date.now() };
 
       const savedItem = await saveSectionItem(section, nextItem);
       const nextItems = editing === 'new'
         ? [savedItem, ...items]
         : items.map((item) => item.id === editing ? savedItem : item);
 
-      if (section === 'plans') {
-        await publishPlansList(nextItems);
-      } else if (section === 'videos') {
-        await publishVideosList(nextItems);
+      if (jsonSections.has(section)) {
+        await publishJson(section, nextItems);
       }
 
       setCollections((current) => ({ ...current, [section]: nextItems }));
       setEditing(null);
       setDraft(emptyItemFor(config, section));
 
-      if (section === 'plans') {
-        setMessage('Plan guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.');
-      } else if (section === 'videos') {
+      if (jsonSections.has(section)) {
+        const names = { plans: 'Plan', videos: 'Video', stories: 'Historia' };
+        const itemName = names[section];
         setMessage(savedItem.status === 'published'
-          ? 'Video guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.'
-          : 'Video guardado como borrador. El JSON público de GitHub también quedó sincronizado sin este video.');
+          ? `${itemName} guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.`
+          : `${itemName} guardado como borrador. El JSON público de GitHub quedó sincronizado sin este contenido.`);
       } else {
         setMessage(firebaseReady
           ? 'Contenido guardado correctamente.'
@@ -198,7 +187,6 @@ export default function SectionManager({ section }) {
 
     try {
       await deleteSectionItem(section, item.id);
-
       setCollections((current) => ({ ...current, [section]: nextItems }));
 
       if (editing === item.id) {
@@ -214,13 +202,15 @@ export default function SectionManager({ section }) {
           console.error('El plan se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
           setMessage(`Plan eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
         }
-      } else if (section === 'videos') {
+      } else if (section === 'videos' || section === 'stories') {
         try {
-          await publishVideosList(nextItems);
-          setMessage('Video eliminado definitivamente de Firebase y de los JSON públicos.');
+          await publishJson(section, nextItems);
+          setMessage(section === 'videos'
+            ? 'Video eliminado definitivamente de Firebase y de los JSON públicos.'
+            : 'Historia eliminada definitivamente de Firebase y de los JSON públicos.');
         } catch (publicError) {
-          console.error('El video se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
-          setMessage(`Video eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
+          console.error('El contenido se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
+          setMessage(`Contenido eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
         }
       } else {
         setMessage('Contenido eliminado definitivamente.');
@@ -233,6 +223,12 @@ export default function SectionManager({ section }) {
     }
   }
 
+  const connectedMessage = firebaseReady
+    ? jsonSections.has(section)
+      ? `Firebase conectado. Al guardar ${section === 'stories' ? 'una historia' : section === 'videos' ? 'un video' : 'un plan'} también se actualiza automáticamente el JSON en GitHub.`
+      : 'Firebase conectado.'
+    : 'Firebase no configurado: el contenido solo se guarda en este navegador.';
+
   return (
     <section className="admin-page">
       <div className={`section-manager-head ${section === 'plans' ? 'plans-compact-head' : ''}`}>
@@ -244,7 +240,7 @@ export default function SectionManager({ section }) {
           </div>
         )}
         <div className="section-actions">
-          {(section === 'plans' || section === 'videos') && (
+          {jsonSections.has(section) && (
             <button
               className="btn muted"
               type="button"
@@ -258,13 +254,7 @@ export default function SectionManager({ section }) {
         </div>
       </div>
 
-      <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>
-        {firebaseReady
-          ? section === 'videos'
-            ? 'Firebase conectado. Al guardar un video también se actualiza automáticamente el JSON en GitHub.'
-            : 'Firebase conectado. Al guardar un plan también se actualiza automáticamente el JSON en GitHub.'
-          : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
-      </p>
+      <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>{connectedMessage}</p>
 
       <div className="mini-stats">
         <span>Total: <strong>{stats.total}</strong></span>
