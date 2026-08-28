@@ -88,6 +88,24 @@ export default function SectionManager({ section }) {
     return payload;
   }
 
+  async function publishVideosList(videosToPublish) {
+    const user = auth?.currentUser;
+    if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
+
+    const idToken = await user.getIdToken();
+    const response = await fetch('/api/publish-videos', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ videos: videosToPublish })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'No se pudo actualizar el JSON de videos en GitHub.');
+    return payload;
+  }
+
   async function deletePublishedPlan(planId) {
     const user = auth?.currentUser;
     if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
@@ -106,12 +124,14 @@ export default function SectionManager({ section }) {
     return payload;
   }
 
-  async function syncPlans() {
+  async function syncJson() {
     setSyncing(true);
     setMessage('');
 
     try {
-      const result = await publishPlansList(items);
+      const result = section === 'videos'
+        ? await publishVideosList(items)
+        : await publishPlansList(items);
       setMessage(`JSON público sincronizado correctamente en el commit ${result.commit?.slice(0, 7) || 'nuevo'}.`);
     } catch (error) {
       console.error('No se pudo sincronizar el JSON público.', error);
@@ -138,6 +158,8 @@ export default function SectionManager({ section }) {
 
       if (section === 'plans') {
         await publishPlansList(nextItems);
+      } else if (section === 'videos') {
+        await publishVideosList(nextItems);
       }
 
       setCollections((current) => ({ ...current, [section]: nextItems }));
@@ -148,8 +170,8 @@ export default function SectionManager({ section }) {
         setMessage('Plan guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.');
       } else if (section === 'videos') {
         setMessage(savedItem.status === 'published'
-          ? 'Video guardado y publicado. Ya está disponible para la galería pública.'
-          : 'Video guardado como borrador. No aparecerá en la galería pública hasta cambiarlo a Publicado.');
+          ? 'Video guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.'
+          : 'Video guardado como borrador. El JSON público de GitHub también quedó sincronizado sin este video.');
       } else {
         setMessage(firebaseReady
           ? 'Contenido guardado correctamente.'
@@ -192,6 +214,14 @@ export default function SectionManager({ section }) {
           console.error('El plan se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
           setMessage(`Plan eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
         }
+      } else if (section === 'videos') {
+        try {
+          await publishVideosList(nextItems);
+          setMessage('Video eliminado definitivamente de Firebase y de los JSON públicos.');
+        } catch (publicError) {
+          console.error('El video se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
+          setMessage(`Video eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
+        }
       } else {
         setMessage('Contenido eliminado definitivamente.');
       }
@@ -214,11 +244,11 @@ export default function SectionManager({ section }) {
           </div>
         )}
         <div className="section-actions">
-          {section === 'plans' && (
+          {(section === 'plans' || section === 'videos') && (
             <button
               className="btn muted"
               type="button"
-              onClick={syncPlans}
+              onClick={syncJson}
               disabled={syncing || loading || saving || Boolean(deletingId)}
             >
               {syncing ? 'Sincronizando...' : 'Sincronizar JSON'}
@@ -231,7 +261,7 @@ export default function SectionManager({ section }) {
       <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>
         {firebaseReady
           ? section === 'videos'
-            ? 'Firebase conectado. Los videos guardados como Publicado aparecen automáticamente en la web pública.'
+            ? 'Firebase conectado. Al guardar un video también se actualiza automáticamente el JSON en GitHub.'
             : 'Firebase conectado. Al guardar un plan también se actualiza automáticamente el JSON en GitHub.'
           : 'Firebase no configurado: el contenido solo se guarda en este navegador.'}
       </p>
