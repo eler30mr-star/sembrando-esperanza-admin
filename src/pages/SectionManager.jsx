@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import EditorForm from '../components/EditorForm.jsx';
 import PlanLanguageEditor from '../components/PlanLanguageEditor.jsx';
+import StoryLanguageEditor from '../components/StoryLanguageEditor.jsx';
 import { sectionConfig } from '../data/initialData.js';
 import { createId, loadCollections } from '../services/localStore.js';
 import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
@@ -278,7 +279,20 @@ export default function SectionManager({ section }) {
         />
       )}
 
-      {editing && section !== 'plans' && (
+      {editing && section === 'stories' && (
+        <StoryLanguageEditor
+          config={config}
+          draft={draft}
+          setDraft={setDraft}
+          setMessage={setMessage}
+          onSubmit={save}
+          onCancel={() => setEditing(null)}
+          mode={editing === 'new' ? 'create' : 'edit'}
+          saving={saving}
+        />
+      )}
+
+      {editing && section !== 'plans' && section !== 'stories' && (
         <EditorForm
           config={config}
           value={draft}
