@@ -1,7 +1,7 @@
 const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-star/sembrando-esperanza';
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
 const PUBLIC_DATA_DIR = process.env.PUBLIC_DATA_DIR || 'public/data';
-const STORY_LANGUAGE = 'es';
+const STORY_LANGUAGES = ['es', 'en', 'pt', 'fr'];
 
 function send(res, status, payload) {
   res.status(status).json(payload);
@@ -26,36 +26,53 @@ function slugify(value) {
     .slice(0, 120);
 }
 
-function normalizeChapters(chapters) {
+function defaultChapterTitle(language, index) {
+  const labels = {
+    es: 'Capítulo',
+    en: 'Chapter',
+    pt: 'Capítulo',
+    fr: 'Chapitre'
+  };
+  return `${labels[language] || labels.es} ${index + 1}`;
+}
+
+function normalizeChapters(chapters, language) {
   if (!Array.isArray(chapters)) return [];
   return chapters
     .map((chapter, index) => ({
-      title: cleanString(chapter?.title) || `Capítulo ${index + 1}`,
-      content: cleanString(chapter?.content)
+      title: cleanString(chapter?.title) || defaultChapterTitle(language, index),
+      content: cleanString(chapter?.content || chapter?.text)
     }))
     .filter((chapter) => chapter.content);
 }
 
-function createStoryDetail(story) {
-  const slug = slugify(story.slug || story.id || story.title) || `story-${Date.now()}`;
-  const shortDescription = cleanString(story.shortDescription || story.description);
+function mergeLanguageStory(story, language) {
+  if (language === 'es') return story;
+  return { ...story, ...(story.translations?.[language] || {}) };
+}
+
+function createStoryDetail(story, language) {
+  const source = mergeLanguageStory(story, language);
+  const slug = slugify(source.slug || story.slug || story.id || source.title || story.title)
+    || `story-${Date.now()}`;
+  const shortDescription = cleanString(source.shortDescription || source.description);
 
   return {
     id: cleanString(story.id),
     slug,
-    title: cleanString(story.title),
-    category: cleanString(story.category) || 'Reflexión',
-    coverImage: cleanString(story.coverImage || story.cover || story.image),
+    title: cleanString(source.title),
+    category: cleanString(source.category || story.category) || 'Reflexión',
+    coverImage: cleanString(source.coverImage || source.cover || source.image || story.coverImage || story.cover || story.image),
     shortDescription,
     description: shortDescription,
-    chapters: normalizeChapters(story.chapters),
+    chapters: normalizeChapters(source.chapters, language),
     status: 'published',
-    language: STORY_LANGUAGE,
+    language,
     updatedAtMs: Number(story.updatedAtMs || Date.now())
   };
 }
 
-function createStorySummary(story) {
+function createStorySummary(story, language) {
   return {
     id: story.id,
     slug: story.slug,
@@ -66,10 +83,18 @@ function createStorySummary(story) {
     description: story.description,
     chapterCount: story.chapters.length,
     status: story.status,
-    language: story.language,
-    detailPath: `/data/${STORY_LANGUAGE}/stories/${story.slug}.json`,
+    language,
+    detailPath: `/data/${language}/stories/${story.slug}.json`,
     updatedAtMs: story.updatedAtMs
   };
+}
+
+function availableLanguages(story) {
+  const languages = ['es'];
+  if (story.translations?.en) languages.push('en');
+  if (story.translations?.pt) languages.push('pt');
+  if (story.translations?.fr) languages.push('fr');
+  return languages;
 }
 
 async function githubRequest(path, requestOptions = {}) {
@@ -244,66 +269,65 @@ export default async function handler(req, res) {
     await requireAdmin(req);
 
     const stories = Array.isArray(req.body?.stories) ? req.body.stories : [];
-    const publishedStories = stories
-      .filter(isPublished)
-      .map(createStoryDetail)
-      .sort((a, b) => Number(b.updatedAtMs || 0) - Number(a.updatedAtMs || 0));
-
-    const invalidStory = publishedStories.find(
-      (story) => !story.id || !story.title || !story.slug || story.chapters.length === 0
-    );
-    if (invalidStory) {
-      const error = new Error(
-        `La historia "${invalidStory.title || invalidStory.id || 'sin título'}" necesita título y al menos un capítulo con contenido.`
-      );
-      error.status = 400;
-      throw error;
-    }
-
-    const slugOwners = new Map();
-    for (const story of publishedStories) {
-      const currentOwner = slugOwners.get(story.slug);
-      if (currentOwner && currentOwner !== story.id) {
-        const error = new Error(`Hay más de una historia con el slug "${story.slug}".`);
-        error.status = 400;
-        throw error;
-      }
-      slugOwners.set(story.slug, story.id);
-    }
-
-    const indexPath = `${PUBLIC_DATA_DIR}/${STORY_LANGUAGE}/stories.json`;
-    const previousIndex = await readJsonFile(indexPath, []);
-    const nextSummaries = publishedStories.map(createStorySummary);
-    const nextSlugs = new Set(nextSummaries.map((story) => story.slug));
+    const publishedStories = stories.filter(isPublished);
+    const grouped = { es: [], en: [], pt: [], fr: [] };
     const changes = new Map();
     const deleted = [];
 
     for (const story of publishedStories) {
-      const detailPath = `${PUBLIC_DATA_DIR}/${STORY_LANGUAGE}/stories/${story.slug}.json`;
-      changes.set(detailPath, jsonFileChange(detailPath, story));
+      for (const language of availableLanguages(story)) {
+        const detail = createStoryDetail(story, language);
+
+        if (!detail.id || !detail.title || !detail.slug || detail.chapters.length === 0) {
+          const error = new Error(
+            `La historia "${detail.title || story.title || story.id || 'sin título'}" en ${language} necesita título, slug y al menos un capítulo con contenido.`
+          );
+          error.status = 400;
+          throw error;
+        }
+
+        if (grouped[language].some((current) => current.slug === detail.slug && current.id !== detail.id)) {
+          const error = new Error(`Hay más de una historia con el slug "${detail.slug}" en ${language}.`);
+          error.status = 400;
+          throw error;
+        }
+
+        grouped[language].push(detail);
+        const detailPath = `${PUBLIC_DATA_DIR}/${language}/stories/${detail.slug}.json`;
+        changes.set(detailPath, jsonFileChange(detailPath, detail));
+      }
     }
 
-    for (const previousStory of Array.isArray(previousIndex) ? previousIndex : []) {
-      const previousSlug = cleanString(previousStory?.slug);
-      if (!previousSlug || nextSlugs.has(previousSlug)) continue;
-      const detailPath = `${PUBLIC_DATA_DIR}/${STORY_LANGUAGE}/stories/${previousSlug}.json`;
-      changes.set(detailPath, { path: detailPath, mode: '100644', type: 'blob', sha: null });
-      deleted.push(detailPath);
-    }
+    for (const language of STORY_LANGUAGES) {
+      grouped[language].sort((a, b) => Number(b.updatedAtMs || 0) - Number(a.updatedAtMs || 0));
 
-    changes.set(indexPath, jsonFileChange(indexPath, nextSummaries));
+      const indexPath = `${PUBLIC_DATA_DIR}/${language}/stories.json`;
+      const previousIndex = await readJsonFile(indexPath, []);
+      const nextSummaries = grouped[language].map((story) => createStorySummary(story, language));
+      const nextSlugs = new Set(nextSummaries.map((story) => story.slug));
+
+      for (const previousStory of Array.isArray(previousIndex) ? previousIndex : []) {
+        const previousSlug = cleanString(previousStory?.slug);
+        if (!previousSlug || nextSlugs.has(previousSlug)) continue;
+
+        const detailPath = `${PUBLIC_DATA_DIR}/${language}/stories/${previousSlug}.json`;
+        changes.set(detailPath, { path: detailPath, mode: '100644', type: 'blob', sha: null });
+        deleted.push(detailPath);
+      }
+
+      changes.set(indexPath, jsonFileChange(indexPath, nextSummaries));
+    }
 
     const commit = await commitJsonChanges(
       [...changes.values()],
-      'Publish story JSON atomically from admin'
+      'Publish multilingual story JSON atomically from admin'
     );
 
     send(res, 200, {
       ok: true,
       count: publishedStories.length,
-      language: STORY_LANGUAGE,
+      languages: STORY_LANGUAGES.filter((language) => grouped[language].length),
       commit,
-      indexPath,
       changedFiles: [...changes.keys()],
       deleted
     });
