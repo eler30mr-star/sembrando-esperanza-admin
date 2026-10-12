@@ -164,7 +164,7 @@ export default function SectionManager({ section }) {
       setMessage(`Sincronización confirmada en GitHub. Commit: ${result.commit?.slice(0, 7) || 'no disponible'}.`);
     } catch (error) {
       console.error('No se pudo sincronizar el JSON público.', error);
-      setMessage(`Sincronización bloqueada: ${error.message}. El contenido existente en GitHub no se eliminó.`);
+      setMessage(`Sincronización sin confirmar: ${error.message}. Revisa el estado de GitHub antes de reintentar.`);
     } finally {
       setSyncing(false);
     }
@@ -202,7 +202,7 @@ export default function SectionManager({ section }) {
         } catch (publicError) {
           console.error('Firebase guardó el contenido, pero GitHub no pudo sincronizar.', publicError);
           setPendingPublication(savedItem.id);
-          setMessage(`Guardado en Firebase, pero NO actualizado en GitHub: ${publicError.message}. Usa «Reintentar publicación».`);
+          setMessage(`Guardado en Firebase, pero la publicación en GitHub no se pudo confirmar: ${publicError.message}. Usa «Reintentar publicación».`);
         }
       } else {
         setMessage('Contenido guardado correctamente en Firebase.');
@@ -246,7 +246,7 @@ export default function SectionManager({ section }) {
       console.error('No se pudo completar la eliminación.', error);
       setMessage(publicRemoved
         ? `Eliminado del JSON público, pero la eliminación de Firebase falló: ${error.message}. Vuelve a intentar eliminarlo.`
-        : `No se eliminó el contenido: ${error.message}. Firebase conserva el registro.`);
+        : `No se confirmó la eliminación pública: ${error.message}. Revisa GitHub antes de volver a intentarlo; Firebase conserva el registro.`);
       try {
         const freshItems = await loadSectionItems(section);
         setCollections((current) => ({ ...current, [section]: freshItems }));
@@ -262,7 +262,7 @@ export default function SectionManager({ section }) {
     ? jsonSections.has(section)
       ? `Firebase configurado. Al guardar ${section === 'stories' ? 'una historia' : section === 'videos' ? 'un video' : 'un plan'} se intentará publicar su JSON en GitHub; revisa el resultado del guardado.`
       : 'Firebase conectado.'
-    : 'Firebase no configurado: el contenido solo se guarda en este navegador.';
+    : 'Firebase no configurado: no se pueden guardar ni consultar registros hasta configurar Vercel.';
 
   return (
     <section className="admin-page">
