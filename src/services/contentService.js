@@ -1,10 +1,7 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDocs,
-  orderBy,
-  query,
   serverTimestamp,
   runTransaction
 } from 'firebase/firestore';
@@ -40,9 +37,11 @@ function getCollectionRef(section) {
 export async function loadSectionItems(section) {
   requireFirebase();
 
-  const q = query(getCollectionRef(section), orderBy('updatedAtMs', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+  // Una consulta con orderBy omite documentos antiguos sin updatedAtMs.
+  const snapshot = await getDocs(getCollectionRef(section));
+  return snapshot.docs
+    .map((item) => ({ ...item.data(), id: item.id }))
+    .sort((a, b) => Number(b.updatedAtMs || 0) - Number(a.updatedAtMs || 0));
 }
 
 function staleError() {

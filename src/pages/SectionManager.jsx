@@ -109,6 +109,26 @@ export default function SectionManager({ section }) {
     return payload;
   }
 
+  async function republishItem(item) {
+    if (syncing || saving || deletingId || loading) return;
+    setSyncing(true);
+    setMessage('');
+    try {
+      const freshItems = await loadSectionItems(section);
+      const freshItem = freshItems.find((entry) => entry.id === item.id);
+      if (!freshItem) throw new Error('Este elemento ya no existe en Firebase. Actualiza la página.');
+      await publishJson(section, [freshItem], { operation: 'upsert', targetId: item.id });
+      setCollections((current) => ({ ...current, [section]: freshItems }));
+      if (pendingPublication === item.id) setPendingPublication(null);
+      setMessage(`Sincronización individual de "${getPrimaryTitle(freshItem)}" completada en GitHub.`);
+    } catch (error) {
+      setPendingPublication(item.id);
+      setMessage(`No se pudo sincronizar "${getPrimaryTitle(item)}": ${error.message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   async function retryPublication() {
     const item = items.find((entry) => entry.id === pendingPublication);
     if (!item || !jsonSections.has(section)) return;
@@ -227,6 +247,12 @@ export default function SectionManager({ section }) {
       setMessage(publicRemoved
         ? `Eliminado del JSON público, pero la eliminación de Firebase falló: ${error.message}. Vuelve a intentar eliminarlo.`
         : `No se eliminó el contenido: ${error.message}. Firebase conserva el registro.`);
+      try {
+        const freshItems = await loadSectionItems(section);
+        setCollections((current) => ({ ...current, [section]: freshItems }));
+      } catch (reloadError) {
+        console.error('No se pudo recargar el contenido tras el error.', reloadError);
+      }
     } finally {
       setDeletingId(null);
     }
@@ -330,6 +356,12 @@ export default function SectionManager({ section }) {
                 <td>
                   <div className="row-actions">
                     <button type="button" onClick={() => startEdit(item)} disabled={Boolean(deletingId) || saving || syncing}>Editar</button>
+                    {jsonSections.has(section) && (
+                      <button type="button" onClick={() => republishItem(item)}
+                        disabled={Boolean(deletingId) || saving || syncing || loading}>
+                        Sincronizar
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="danger-link"
