@@ -1,4 +1,4 @@
-import { publicationIntent, reconcileIndex, assertUniqueIndex, publicationDiff } from './_lib/syncSafety.js';
+import { publicationIntent, reconcileIndex, assertUniqueIndex, publicationDiff } from '../lib/syncSafety.js';
 const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-star/sembrando-esperanza';
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
 const PUBLIC_DATA_DIR = process.env.PUBLIC_DATA_DIR || 'public/data';

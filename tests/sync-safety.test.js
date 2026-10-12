@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { publicationIntent, reconcileIndex, assertUniqueIndex, publicationDiff } from '../api/_lib/syncSafety.js';
+import { publicationIntent, reconcileIndex, assertUniqueIndex, publicationDiff } from '../lib/syncSafety.js';
 
 const p = (id, slug, updatedAtMs = 1) => ({ id, slug, updatedAtMs });
 
