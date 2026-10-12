@@ -362,11 +362,11 @@ export default async function handler(req, res) {
     const nextSummaries = reconcileIndex(previousIndex, incomingSummaries, intent);
     assertUniqueIndex(nextSummaries, indexPath);
     verifyIndexPreservation(indexPath, previousIndex, nextSummaries, deletedIds);
-    previewByLanguage[VIDEO_LANGUAGE] = publicationDiff(previousIndex, nextSummaries);
     const nextSlugs = new Set(nextSummaries.map((video) => video.slug));
     const changes = new Map();
     const deleted = [];
     const previewByLanguage = {};
+    previewByLanguage[VIDEO_LANGUAGE] = publicationDiff(previousIndex, nextSummaries);
 
     for (const video of publishedVideos) {
       const detailPath = `${PUBLIC_DATA_DIR}/${VIDEO_LANGUAGE}/videos/${video.slug}.json`;
