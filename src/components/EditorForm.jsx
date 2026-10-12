@@ -148,7 +148,7 @@ export default function EditorForm({ config, value, onChange, onSubmit, onCancel
               <div className="chapter-editor-head"><div><span>{field.label}</span><p>Agrega una línea por cada punto.</p></div><button className="btn muted" type="button" onClick={() => addListItem(field.name)}>Agregar punto</button></div>
               <div className="chapter-list">{list.map((item, index) => <section className="chapter-card compact-card" key={`${field.name}-${index}`}>
                 <div className="chapter-card-head"><strong>Punto {index + 1}</strong><button type="button" className="danger-link" onClick={() => removeListItem(field.name, index)}>Eliminar</button></div>
-                <input value={item || ''} onChange={(event) => updateListItem(field.name, index, event.target.value)} placeholder={field.itemPlaceholder || 'Escribe un punto'} />
+                <input type={field.itemType || 'text'} value={item || ''} onChange={(event) => updateListItem(field.name, index, event.target.value)} placeholder={field.itemPlaceholder || 'Escribe un punto'} />
               </section>)}</div>
             </div>;
           }

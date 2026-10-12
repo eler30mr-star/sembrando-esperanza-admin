@@ -35,6 +35,7 @@ export default function SectionManager({ section }) {
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyItemFor(config, section));
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -45,6 +46,7 @@ export default function SectionManager({ section }) {
     let alive = true;
     async function loadItems() {
       setLoading(true);
+      setLoaded(false);
       setMessage('');
       setPendingPublication(null);
       try {
@@ -52,6 +54,7 @@ export default function SectionManager({ section }) {
         if (!alive) return;
         setCollections((current) => ({ ...current, [section]: loadedItems }));
         setDraft(emptyItemFor(config, section));
+        setLoaded(true);
       } catch (error) {
         console.error('No se pudo consultar Firestore.', error);
         if (alive) setMessage(`No se pudo cargar ${config.label} desde Firebase: ${error.message}. No se permite sincronizar sin los datos.`);
@@ -70,6 +73,7 @@ export default function SectionManager({ section }) {
   }), [items]);
 
   function startCreate() {
+    if (!loaded) return;
     setEditing('new');
     setDraft(emptyItemFor(config, section));
     setMessage('');
@@ -146,6 +150,7 @@ export default function SectionManager({ section }) {
   }
 
   async function syncJson() {
+    if (!loaded) return;
     setSyncing(true);
     setMessage('');
     try {
@@ -172,6 +177,7 @@ export default function SectionManager({ section }) {
 
   async function save(event) {
     event.preventDefault();
+    if (!loaded) return;
     if (saving || deletingId || syncing) return;
     setSaving(true);
     setMessage('');
@@ -216,7 +222,7 @@ export default function SectionManager({ section }) {
   }
 
   async function remove(item) {
-    if (deletingId || saving || syncing) return;
+    if (deletingId || saving || syncing || !loaded) return;
     const title = getPrimaryTitle(item);
     if (!window.confirm(`¿Eliminar "${title}" definitivamente? Se retirará primero de la web pública y después de Firebase.`)) return;
 
@@ -280,7 +286,7 @@ export default function SectionManager({ section }) {
               className="btn muted"
               type="button"
               onClick={syncJson}
-              disabled={syncing || loading || saving || Boolean(deletingId)}
+              disabled={syncing || loading || !loaded || saving || Boolean(deletingId)}
             >
               {syncing ? 'Sincronizando...' : 'Sincronizar JSON'}
             </button>
@@ -291,11 +297,12 @@ export default function SectionManager({ section }) {
               Reintentar publicación
             </button>
           )}
-          <button className="btn primary" type="button" onClick={startCreate} disabled={saving || syncing || Boolean(deletingId)}>Nuevo</button>
+          <button className="btn primary" type="button" onClick={startCreate} disabled={saving || syncing || !loaded || Boolean(deletingId)}>Nuevo</button>
         </div>
       </div>
 
       <p className={`admin-message ${firebaseReady ? 'success' : 'warning'}`}>{connectedMessage}</p>
+      {!loaded && !loading && <p className="admin-message warning">La carga de datos no se completó. Actualiza la página antes de editar o publicar.</p>}
 
       <div className="mini-stats">
         <span>Total: <strong>{stats.total}</strong></span>
@@ -355,10 +362,10 @@ export default function SectionManager({ section }) {
                 <td><span className={`status ${item.status || 'draft'}`}>{item.status || 'draft'}</span></td>
                 <td>
                   <div className="row-actions">
-                    <button type="button" onClick={() => startEdit(item)} disabled={Boolean(deletingId) || saving || syncing}>Editar</button>
+                    <button type="button" onClick={() => startEdit(item)} disabled={Boolean(deletingId) || saving || syncing || !loaded}>Editar</button>
                     {jsonSections.has(section) && (
                       <button type="button" onClick={() => republishItem(item)}
-                        disabled={Boolean(deletingId) || saving || syncing || loading}>
+                        disabled={Boolean(deletingId) || saving || syncing || loading || !loaded}>
                         Sincronizar
                       </button>
                     )}
@@ -366,7 +373,7 @@ export default function SectionManager({ section }) {
                       type="button"
                       className="danger-link"
                       onClick={() => remove(item)}
-                      disabled={Boolean(deletingId) || saving || syncing}
+                      disabled={Boolean(deletingId) || saving || syncing || !loaded}
                     >
                       {deletingId === item.id ? 'Eliminando...' : 'Eliminar'}
                     </button>
@@ -374,7 +381,7 @@ export default function SectionManager({ section }) {
                 </td>
               </tr>
             ))}
-            {items.length === 0 && !loading && <tr><td colSpan="4" className="empty-state">No hay contenido todavía.</td></tr>}
+            {items.length === 0 && loaded && !loading && <tr><td colSpan="4" className="empty-state">No hay contenido todavía.</td></tr>}
           </tbody>
         </table>
       </div>

@@ -142,12 +142,13 @@ export const sectionConfig = {
   albums: {
     label: 'Álbumes de imágenes',
     singular: 'Álbum',
-    description: 'Administra álbumes visuales con frases, versículos e imágenes cristianas.',
+    description: 'Publica un álbum con portada y agrega las URL de sus fotografías o imágenes. Solo los álbumes publicados aparecerán en la galería.',
     fields: [
       { name: 'title', label: 'Nombre del álbum', type: 'text', required: true },
       { name: 'category', label: 'Categoría', type: 'text' },
       { name: 'coverImage', label: 'URL portada', type: 'url' },
       { name: 'shortDescription', label: 'Descripción corta', type: 'textarea' },
+      { name: 'images', label: 'Imágenes del álbum (URL por imagen)', type: 'list', itemType: 'url', itemPlaceholder: 'https://ejemplo.com/imagen.jpg' },
       { name: 'status', label: 'Estado', type: 'status' }
     ]
   },
@@ -176,13 +177,13 @@ export const sectionConfig = {
   homeSections: {
     label: 'Inicio',
     singular: 'Configuración de inicio',
-    description: 'Define qué contenido aparece destacado en la portada pública.',
+    description: 'Elige los destacados por ID, slug, título o referencia de un contenido publicado. La configuración publicada más reciente tiene prioridad.',
     fields: [
       { name: 'title', label: 'Nombre interno', type: 'text', required: true },
-      { name: 'planFeatured', label: 'Plan destacado', type: 'text' },
-      { name: 'storyFeatured', label: 'Historia destacada', type: 'text' },
-      { name: 'videoFeatured', label: 'Video destacado', type: 'text' },
-      { name: 'verseFeatured', label: 'Versículo destacado', type: 'text' },
+      { name: 'planFeatured', label: 'Plan destacado (ID, slug o título)', type: 'text' },
+      { name: 'storyFeatured', label: 'Historia destacada (ID, slug o título)', type: 'text' },
+      { name: 'videoFeatured', label: 'Video destacado (ID, slug o título)', type: 'text' },
+      { name: 'verseFeatured', label: 'Versículo destacado (ID o referencia)', type: 'text' },
       { name: 'status', label: 'Estado', type: 'status' }
     ]
   }
