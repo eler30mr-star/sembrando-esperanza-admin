@@ -1,3 +1,4 @@
+import { publicationIntent, reconcileIndex, assertUniqueIndex, publicationDiff } from './_lib/syncSafety.js';
 const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-star/sembrando-esperanza';
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
 const PUBLIC_DATA_DIR = process.env.PUBLIC_DATA_DIR || 'public/data';
@@ -214,7 +215,7 @@ function jsonFileChange(path, data) {
   };
 }
 
-async function commitJsonChanges(changes, message) {
+async function commitJsonChanges(changes, message, expectedHead) {
   const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
   const encodedBranch = PUBLIC_REPO_BRANCH.split('/').map(encodeURIComponent).join('/');
   const maxAttempts = 4;
@@ -224,6 +225,7 @@ async function commitJsonChanges(changes, message) {
       const refResponse = await githubRequest(`/repos/${owner}/${repo}/git/ref/heads/${encodedBranch}`);
       const ref = await refResponse.json();
       const headSha = ref.object?.sha;
+      assertHeadMatches(expectedHead, headSha);
 
       const commitResponse = await githubRequest(`/repos/${owner}/${repo}/git/commits/${headSha}`);
       const currentCommit = await commitResponse.json();
@@ -258,6 +260,7 @@ async function commitJsonChanges(changes, message) {
 
       return nextCommit.sha;
     } catch (error) {
+      if (error.concurrentChange) throw error;
       const branchMoved = error.status === 409 || error.status === 422;
       if (!branchMoved || attempt === maxAttempts) throw error;
       await sleep(150 * attempt);
@@ -286,6 +289,24 @@ function verifyIndexPreservation(indexPath, previousIndex, nextSummaries, delete
   }
 }
 
+async function getPublicHead() {
+  const [owner, repo] = PUBLIC_REPO_FULL_NAME.split('/');
+  const branch = PUBLIC_REPO_BRANCH.split('/').map(encodeURIComponent).join('/');
+  const response = await githubRequest(`/repos/${owner}/${repo}/git/ref/heads/${branch}`);
+  const head = (await response.json()).object?.sha;
+  if (!head) throw new Error('No se pudo verificar el commit actual del repositorio público.');
+  return head;
+}
+
+function assertHeadMatches(expected, actual) {
+  if (expected !== actual) {
+    const error = new Error('El repositorio público cambió durante la revisión. Vuelve a sincronizar para no sobrescribir cambios recientes.');
+    error.status = 409;
+    error.concurrentChange = true;
+    throw error;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     send(res, 405, { error: 'Método no permitido.' });
@@ -294,13 +315,16 @@ export default async function handler(req, res) {
 
   try {
     await requireAdmin(req);
-    const deletedIds = new Set(Array.isArray(req.body?.deletedIds) ? req.body.deletedIds.map(cleanString).filter(Boolean) : []);
+    const intent = publicationIntent(req.body, 'stories');
+    const baseCommit = await getPublicHead();
+    const deletedIds = new Set(intent.operation === 'sync' ? [] : [intent.targetId]);
 
-    const stories = Array.isArray(req.body?.stories) ? req.body.stories : [];
+    const stories = intent.items;
     const publishedStories = stories.filter(isPublished);
     const grouped = { es: [], en: [], pt: [], fr: [] };
     const changes = new Map();
     const deleted = [];
+    const previewByLanguage = {};
 
     for (const story of publishedStories) {
       for (const language of availableLanguages(story)) {
@@ -331,8 +355,11 @@ export default async function handler(req, res) {
 
       const indexPath = `${PUBLIC_DATA_DIR}/${language}/stories.json`;
       const previousIndex = await readJsonFile(indexPath, []);
-      const nextSummaries = grouped[language].map((story) => createStorySummary(story, language));
+      const incomingSummaries = grouped[language].map((story) => createStorySummary(story, language));
+      const nextSummaries = reconcileIndex(previousIndex, incomingSummaries, intent);
+      assertUniqueIndex(nextSummaries, indexPath);
       verifyIndexPreservation(indexPath, previousIndex, nextSummaries, deletedIds);
+      previewByLanguage[language] = publicationDiff(previousIndex, nextSummaries);
       const nextSlugs = new Set(nextSummaries.map((story) => story.slug));
 
       for (const previousStory of Array.isArray(previousIndex) ? previousIndex : []) {
@@ -347,9 +374,26 @@ export default async function handler(req, res) {
       changes.set(indexPath, jsonFileChange(indexPath, nextSummaries));
     }
 
+    const finalHead = await getPublicHead();
+    assertHeadMatches(baseCommit, finalHead);
+    if (intent.expectedHead) assertHeadMatches(intent.expectedHead, baseCommit);
+
+    if (intent.dryRun) {
+      send(res, 200, {
+        ok: true,
+        dryRun: true,
+        baseCommit,
+        preview: previewByLanguage,
+        changedFiles: [...changes.keys()],
+        deleted
+      });
+      return;
+    }
+
     const commit = await commitJsonChanges(
       [...changes.values()],
-      'Publish multilingual story JSON atomically from admin'
+      'Publish multilingual story JSON atomically from admin',
+      baseCommit
     );
 
     send(res, 200, {
