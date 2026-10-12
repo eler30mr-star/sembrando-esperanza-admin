@@ -6,7 +6,7 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc
+  runTransaction
 } from 'firebase/firestore';
 import { db, firebaseReady } from './firebase.js';
 
@@ -45,9 +45,14 @@ export async function loadSectionItems(section) {
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
 }
 
-export async function saveSectionItem(section, item) {
-  requireFirebase();
+function staleError() {
+  const error = new Error('Otro administrador o pestaña modificó este contenido. Actualiza la sección antes de continuar.');
+  error.status = 409;
+  return error;
+}
 
+export async function saveSectionItem(section, item, expectedUpdatedAtMs = null) {
+  requireFirebase();
   const now = Date.now();
   const nextItem = cleanForFirestore({
     ...item,
@@ -55,15 +60,28 @@ export async function saveSectionItem(section, item) {
     updatedAt: new Date(now).toISOString()
   });
 
-  await setDoc(doc(db, section, nextItem.id), {
-    ...nextItem,
-    updatedAtServer: serverTimestamp()
-  }, { merge: true });
+  const reference = doc(db, section, nextItem.id);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    if (expectedUpdatedAtMs === null) {
+      if (snapshot.exists()) throw staleError();
+    } else if (!snapshot.exists() || Number(snapshot.data().updatedAtMs || 0) !== Number(expectedUpdatedAtMs)) {
+      throw staleError();
+    }
+
+    transaction.set(reference, { ...nextItem, updatedAtServer: serverTimestamp() }, { merge: true });
+  });
 
   return nextItem;
 }
 
-export async function deleteSectionItem(section, id) {
+export async function deleteSectionItem(section, id, expectedUpdatedAtMs = 0) {
   requireFirebase();
-  await deleteDoc(doc(db, section, id));
+  const reference = doc(db, section, id);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reference);
+    if (!snapshot.exists()) return;
+    if (Number(snapshot.data().updatedAtMs || 0) !== Number(expectedUpdatedAtMs)) throw staleError();
+    transaction.delete(reference);
+  });
 }

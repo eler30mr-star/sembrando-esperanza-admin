@@ -3,7 +3,7 @@ import EditorForm from '../components/EditorForm.jsx';
 import PlanLanguageEditor from '../components/PlanLanguageEditor.jsx';
 import StoryLanguageEditor from '../components/StoryLanguageEditor.jsx';
 import { sectionConfig } from '../data/initialData.js';
-import { createId, loadCollections } from '../services/localStore.js';
+import { createId } from '../services/localStore.js';
 import { deleteSectionItem, loadSectionItems, saveSectionItem } from '../services/contentService.js';
 import { auth, firebaseReady } from '../services/firebase.js';
 
@@ -30,7 +30,7 @@ const jsonSections = new Set(['plans', 'videos', 'stories']);
 
 export default function SectionManager({ section }) {
   const config = sectionConfig[section];
-  const [collections, setCollections] = useState(loadCollections());
+  const [collections, setCollections] = useState({});
   const items = collections[section] || [];
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(emptyItemFor(config, section));
@@ -39,17 +39,25 @@ export default function SectionManager({ section }) {
   const [syncing, setSyncing] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState('');
+  const [pendingPublication, setPendingPublication] = useState(null);
 
   useEffect(() => {
     let alive = true;
     async function loadItems() {
       setLoading(true);
       setMessage('');
-      const loadedItems = await loadSectionItems(section);
-      if (!alive) return;
-      setCollections((current) => ({ ...current, [section]: loadedItems }));
-      setDraft(emptyItemFor(config, section));
-      setLoading(false);
+      setPendingPublication(null);
+      try {
+        const loadedItems = await loadSectionItems(section);
+        if (!alive) return;
+        setCollections((current) => ({ ...current, [section]: loadedItems }));
+        setDraft(emptyItemFor(config, section));
+      } catch (error) {
+        console.error('No se pudo consultar Firestore.', error);
+        if (alive) setMessage(`No se pudo cargar ${config.label} desde Firebase: ${error.message}. No se permite sincronizar sin los datos.`);
+      } finally {
+        if (alive) setLoading(false);
+      }
     }
     loadItems();
     return () => { alive = false; };
@@ -101,33 +109,42 @@ export default function SectionManager({ section }) {
     return payload;
   }
 
-  async function deletePublishedPlan(planId) {
-    const user = auth?.currentUser;
-    if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
-
-    const idToken = await user.getIdToken();
-    const response = await fetch('/api/delete-plan', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${idToken}`
-      },
-      body: JSON.stringify({ planId })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || 'No se pudo eliminar el plan del JSON público.');
-    return payload;
+  async function retryPublication() {
+    const item = items.find((entry) => entry.id === pendingPublication);
+    if (!item || !jsonSections.has(section)) return;
+    setSyncing(true);
+    setMessage('');
+    try {
+      await publishJson(section, [item], { operation: 'upsert', targetId: item.id });
+      setPendingPublication(null);
+      setMessage('Publicación pendiente completada correctamente en GitHub.');
+    } catch (error) {
+      setMessage(`Firebase conserva el contenido, pero sigue sin publicarse en GitHub: ${error.message}`);
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function syncJson() {
     setSyncing(true);
     setMessage('');
     try {
-      const result = await publishJson(section, items);
-      setMessage(`JSON público sincronizado correctamente en el commit ${result?.commit?.slice(0, 7) || 'nuevo'}.`);
+      // Leer nuevamente de Firebase evita publicar una colección obsoleta de esta pestaña.
+      const freshItems = await loadSectionItems(section);
+      const preview = await publishJson(section, freshItems, { operation: 'sync', dryRun: true });
+      const lines = Object.entries(preview.preview || {}).map(([language, counts]) =>
+        `${language.toUpperCase()}: +${counts.added} nuevos, ~${counts.updated} actualizados, -${counts.removed} eliminados`);
+      if (!window.confirm(`Revisión previa de sincronización:\n\n${lines.join('\n')}\n\nArchivos a procesar: ${preview.changedFiles?.length || 0}.\nSolo se continúa si GitHub no cambia. ¿Confirmar?`)) {
+        setMessage('Sincronización cancelada. No se realizó ningún cambio en GitHub.');
+        return;
+      }
+      const result = await publishJson(section, freshItems, { operation: 'sync', expectedHead: preview.baseCommit });
+      setCollections((current) => ({ ...current, [section]: freshItems }));
+      setPendingPublication(null);
+      setMessage(`Sincronización confirmada en GitHub. Commit: ${result.commit?.slice(0, 7) || 'no disponible'}.`);
     } catch (error) {
       console.error('No se pudo sincronizar el JSON público.', error);
-      setMessage(error.message || 'No se pudo sincronizar el JSON público.');
+      setMessage(`Sincronización bloqueada: ${error.message}. El contenido existente en GitHub no se eliminó.`);
     } finally {
       setSyncing(false);
     }
@@ -135,41 +152,44 @@ export default function SectionManager({ section }) {
 
   async function save(event) {
     event.preventDefault();
+    if (saving || deletingId || syncing) return;
     setSaving(true);
     setMessage('');
 
     try {
-      const nextItem = editing === 'new'
+      const isNew = editing === 'new';
+      const nextItem = isNew
         ? { ...draft, id: createId(section.slice(0, -1) || section), updatedAtMs: Date.now() }
         : { ...draft, updatedAtMs: Date.now() };
-
-      const savedItem = await saveSectionItem(section, nextItem);
-      const nextItems = editing === 'new'
+      const expectedVersion = isNew ? null : Number(items.find((item) => item.id === editing)?.updatedAtMs || 0);
+      const savedItem = await saveSectionItem(section, nextItem, expectedVersion);
+      const nextItems = isNew
         ? [savedItem, ...items]
         : items.map((item) => item.id === editing ? savedItem : item);
 
-      if (jsonSections.has(section)) {
-        await publishJson(section, nextItems);
-      }
-
+      // Guardado real y confirmado en Firestore; la publicación en GitHub es un paso separado.
       setCollections((current) => ({ ...current, [section]: nextItems }));
       setEditing(null);
       setDraft(emptyItemFor(config, section));
 
       if (jsonSections.has(section)) {
-        const names = { plans: 'Plan', videos: 'Video', stories: 'Historia' };
-        const itemName = names[section];
-        setMessage(savedItem.status === 'published'
-          ? `${itemName} guardado correctamente. Firebase y el JSON de GitHub quedaron actualizados.`
-          : `${itemName} guardado como borrador. El JSON público de GitHub quedó sincronizado sin este contenido.`);
+        try {
+          await publishJson(section, [savedItem], { operation: 'upsert', targetId: savedItem.id });
+          setPendingPublication(null);
+          setMessage(savedItem.status === 'published'
+            ? 'Guardado en Firebase y publicado correctamente en GitHub.'
+            : 'Borrador guardado en Firebase y retirado del JSON público si estaba publicado.');
+        } catch (publicError) {
+          console.error('Firebase guardó el contenido, pero GitHub no pudo sincronizar.', publicError);
+          setPendingPublication(savedItem.id);
+          setMessage(`Guardado en Firebase, pero NO actualizado en GitHub: ${publicError.message}. Usa «Reintentar publicación».`);
+        }
       } else {
-        setMessage(firebaseReady
-          ? 'Contenido guardado correctamente.'
-          : 'Contenido guardado solo en este navegador. Firebase no está configurado en Vercel o falta redeploy.');
+        setMessage('Contenido guardado correctamente en Firebase.');
       }
     } catch (error) {
-      console.error('No se pudo guardar o publicar el contenido.', error);
-      setMessage(error.message || 'No se pudo completar el guardado. Revisa Firebase, GitHub o las variables de Vercel.');
+      console.error('No se pudo guardar el contenido en Firebase.', error);
+      setMessage(`No se guardó el contenido: ${error.message}`);
     } finally {
       setSaving(false);
     }
@@ -177,48 +197,36 @@ export default function SectionManager({ section }) {
 
   async function remove(item) {
     if (deletingId || saving || syncing) return;
-
     const title = getPrimaryTitle(item);
-    const confirmed = window.confirm(`¿Eliminar "${title}" definitivamente? Esta acción no se puede deshacer.`);
-    if (!confirmed) return;
+    if (!window.confirm(`¿Eliminar "${title}" definitivamente? Se retirará primero de la web pública y después de Firebase.`)) return;
 
-    const nextItems = items.filter((current) => current.id !== item.id);
     setDeletingId(item.id);
     setMessage('');
+    let publicRemoved = false;
 
     try {
-      await deleteSectionItem(section, item.id);
-      setCollections((current) => ({ ...current, [section]: nextItems }));
-
+      if (jsonSections.has(section)) {
+        await publishJson(section, [], { operation: 'delete', targetId: item.id });
+        publicRemoved = true;
+      }
+      await deleteSectionItem(section, item.id, Number(item.updatedAtMs || 0));
+      setCollections((current) => ({
+        ...current,
+        [section]: (current[section] || []).filter((entry) => entry.id !== item.id)
+      }));
       if (editing === item.id) {
         setEditing(null);
         setDraft(emptyItemFor(config, section));
       }
-
-      if (section === 'plans') {
-        try {
-          await deletePublishedPlan(item.id);
-          setMessage('Plan eliminado definitivamente de Firebase y de los JSON públicos.');
-        } catch (publicError) {
-          console.error('El plan se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
-          setMessage(`Plan eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
-        }
-      } else if (section === 'videos' || section === 'stories') {
-        try {
-          await publishJson(section, nextItems, { deletedIds: [item.id] });
-          setMessage(section === 'videos'
-            ? 'Video eliminado definitivamente de Firebase y de los JSON públicos.'
-            : 'Historia eliminada definitivamente de Firebase y de los JSON públicos.');
-        } catch (publicError) {
-          console.error('El contenido se eliminó de Firebase, pero falló la limpieza del JSON público.', publicError);
-          setMessage(`Contenido eliminado de Firebase. No se pudo limpiar el JSON público: ${publicError.message}`);
-        }
-      } else {
-        setMessage('Contenido eliminado definitivamente.');
-      }
+      if (pendingPublication === item.id) setPendingPublication(null);
+      setMessage(publicRemoved
+        ? 'Contenido eliminado del JSON público y de Firebase.'
+        : 'Contenido eliminado de Firebase.');
     } catch (error) {
-      console.error('No se pudo eliminar el contenido de Firebase.', error);
-      setMessage(error.message || 'No se pudo eliminar el contenido de Firebase.');
+      console.error('No se pudo completar la eliminación.', error);
+      setMessage(publicRemoved
+        ? `Eliminado del JSON público, pero la eliminación de Firebase falló: ${error.message}. Vuelve a intentar eliminarlo.`
+        : `No se eliminó el contenido: ${error.message}. Firebase conserva el registro.`);
     } finally {
       setDeletingId(null);
     }
@@ -226,7 +234,7 @@ export default function SectionManager({ section }) {
 
   const connectedMessage = firebaseReady
     ? jsonSections.has(section)
-      ? `Firebase conectado. Al guardar ${section === 'stories' ? 'una historia' : section === 'videos' ? 'un video' : 'un plan'} también se actualiza automáticamente el JSON en GitHub.`
+      ? `Firebase configurado. Al guardar ${section === 'stories' ? 'una historia' : section === 'videos' ? 'un video' : 'un plan'} se intentará publicar su JSON en GitHub; revisa el resultado del guardado.`
       : 'Firebase conectado.'
     : 'Firebase no configurado: el contenido solo se guarda en este navegador.';
 
@@ -249,6 +257,12 @@ export default function SectionManager({ section }) {
               disabled={syncing || loading || saving || Boolean(deletingId)}
             >
               {syncing ? 'Sincronizando...' : 'Sincronizar JSON'}
+            </button>
+          )}
+          {pendingPublication && jsonSections.has(section) && (
+            <button className="btn muted" type="button" onClick={retryPublication}
+              disabled={syncing || loading || saving || Boolean(deletingId)}>
+              Reintentar publicación
             </button>
           )}
           <button className="btn primary" type="button" onClick={startCreate} disabled={saving || syncing || Boolean(deletingId)}>Nuevo</button>
