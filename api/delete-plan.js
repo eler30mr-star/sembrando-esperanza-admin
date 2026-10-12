@@ -105,13 +105,20 @@ async function getExistingFile(path) {
 
 async function readJsonFile(path, fallback = []) {
   const file = await getExistingFile(path);
-  if (!file?.content) return fallback;
+  if (!file) return fallback;
+  if (typeof file.content !== 'string') {
+    const error = new Error(`El índice ${path} no contiene datos legibles. Operación cancelada para proteger el contenido.`);
+    error.status = 409;
+    throw error;
+  }
 
   try {
-    const text = Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8');
+    const text = Buffer.from(file.content.replace(/\s+/g, ''), 'base64').toString('utf8');
     return JSON.parse(text);
   } catch {
-    return fallback;
+    const error = new Error(`El JSON público ${path} es inválido. Operación detenida para evitar pérdida de contenido.`);
+    error.status = 409;
+    throw error;
   }
 }
 

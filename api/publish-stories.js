@@ -188,12 +188,20 @@ async function getExistingFile(path) {
 
 async function readJsonFile(path, fallback = []) {
   const file = await getExistingFile(path);
-  if (!file?.content) return fallback;
+  if (!file) return fallback;
+  if (typeof file.content !== 'string') {
+    const error = new Error(`El índice ${path} no contiene datos legibles. Operación cancelada para proteger el contenido.`);
+    error.status = 409;
+    throw error;
+  }
+
   try {
-    const text = Buffer.from(file.content.replace(/\n/g, ''), 'base64').toString('utf8');
+    const text = Buffer.from(file.content.replace(/\s+/g, ''), 'base64').toString('utf8');
     return JSON.parse(text);
   } catch {
-    return fallback;
+    const error = new Error(`El JSON público ${path} es inválido. Operación detenida para evitar pérdida de contenido.`);
+    error.status = 409;
+    throw error;
   }
 }
 
@@ -259,6 +267,25 @@ async function commitJsonChanges(changes, message) {
   throw new Error('No se pudo actualizar la rama después de varios intentos.');
 }
 
+function verifyIndexPreservation(indexPath, previousIndex, nextSummaries, deletedIds) {
+  if (!Array.isArray(previousIndex)) {
+    const error = new Error(`El índice ${indexPath} no contiene una lista. Publicación cancelada.`);
+    error.status = 409;
+    throw error;
+  }
+
+  const nextIds = new Set(nextSummaries.map((item) => cleanString(item?.id)));
+  const unexpected = previousIndex.filter((item) => {
+    const id = cleanString(item?.id);
+    return !nextIds.has(id) && !deletedIds.has(id);
+  });
+  if (unexpected.length) {
+    const error = new Error(`Sincronización bloqueada: ${unexpected.length} elementos existentes de ${indexPath} desaparecerían sin una eliminación explícita. Revisa Firestore y GitHub antes de continuar.`);
+    error.status = 409;
+    throw error;
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     send(res, 405, { error: 'Método no permitido.' });
@@ -267,6 +294,7 @@ export default async function handler(req, res) {
 
   try {
     await requireAdmin(req);
+    const deletedIds = new Set(Array.isArray(req.body?.deletedIds) ? req.body.deletedIds.map(cleanString).filter(Boolean) : []);
 
     const stories = Array.isArray(req.body?.stories) ? req.body.stories : [];
     const publishedStories = stories.filter(isPublished);
@@ -304,6 +332,7 @@ export default async function handler(req, res) {
       const indexPath = `${PUBLIC_DATA_DIR}/${language}/stories.json`;
       const previousIndex = await readJsonFile(indexPath, []);
       const nextSummaries = grouped[language].map((story) => createStorySummary(story, language));
+      verifyIndexPreservation(indexPath, previousIndex, nextSummaries, deletedIds);
       const nextSlugs = new Set(nextSummaries.map((story) => story.slug));
 
       for (const previousStory of Array.isArray(previousIndex) ? previousIndex : []) {

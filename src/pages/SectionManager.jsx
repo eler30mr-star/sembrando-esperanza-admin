@@ -73,7 +73,7 @@ export default function SectionManager({ section }) {
     setMessage('');
   }
 
-  async function publishJson(sectionName, nextItems) {
+  async function publishJson(sectionName, nextItems, options = {}) {
     const user = auth?.currentUser;
     if (!user) throw new Error('La sesión de administrador expiró. Vuelve a iniciar sesión.');
 
@@ -92,7 +92,7 @@ export default function SectionManager({ section }) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${idToken}`
       },
-      body: JSON.stringify({ [publishConfig.bodyKey]: nextItems })
+      body: JSON.stringify({ [publishConfig.bodyKey]: nextItems, ...options })
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -205,7 +205,7 @@ export default function SectionManager({ section }) {
         }
       } else if (section === 'videos' || section === 'stories') {
         try {
-          await publishJson(section, nextItems);
+          await publishJson(section, nextItems, { deletedIds: [item.id] });
           setMessage(section === 'videos'
             ? 'Video eliminado definitivamente de Firebase y de los JSON públicos.'
             : 'Historia eliminada definitivamente de Firebase y de los JSON públicos.');
