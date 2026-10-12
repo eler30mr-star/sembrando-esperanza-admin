@@ -58,3 +58,8 @@ Las siete secciones ya tienen una ruta de visualización en la web pública:
 **Migración:** el contenido histórico fijo en `src/data/content.js` de la web anterior no se importa automáticamente a Firestore. Antes de retirar contenido histórico, crea o importa sus registros publicados desde el administrador. Los índices JSON de planes, historias y videos permanecen sin borrar ni migrar.
 
 La web puede mostrar colecciones vacías si aún no se ha configurado Firebase o no se han migrado sus registros. Es una indicación real del estado de los datos, no una sustitución automática por contenido de demostración.
+
+
+## Fase 4 — dashboard y estabilidad
+
+La ruta principal `/` presenta un resumen conectado a las siete colecciones reales de Firestore; `/planes` y las restantes secciones mantienen sus rutas existentes. El menú incorpora «Resumen». Las consultas se ejecutan de forma independiente con `Promise.allSettled`, presentan errores parciales y no confunden datos no disponibles con cero registros. Los totales globales solo se muestran cuando se consultaron satisfactoriamente las siete colecciones; el panel permite actualizar datos manualmente. No se realizan operaciones de escritura desde el dashboard.

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 import AdminLayout from './components/AdminLayout.jsx';
 import Login from './pages/Login.jsx';
+import Dashboard from './pages/Dashboard.jsx';
 import SectionManager from './pages/SectionManager.jsx';
 import NotFound from './pages/NotFound.jsx';
 import { adminEmail, auth, firebaseReady } from './services/firebase.js';
@@ -40,7 +41,7 @@ export default function App() {
           </RequireFirebaseSession>
         }
       >
-        <Route index element={<Navigate to="/planes" replace />} />
+        <Route index element={<Dashboard />} />
         <Route path="planes" element={<SectionManager section="plans" />} />
         <Route path="historias" element={<SectionManager section="stories" />} />
         <Route path="videos" element={<SectionManager section="videos" />} />
