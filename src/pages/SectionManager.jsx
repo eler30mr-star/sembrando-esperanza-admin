@@ -41,6 +41,8 @@ export default function SectionManager({ section }) {
   const [deletingId, setDeletingId] = useState(null);
   const [message, setMessage] = useState('');
   const [pendingPublication, setPendingPublication] = useState(null);
+  const [audit, setAudit] = useState(null);
+  const [auditing, setAuditing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -111,6 +113,61 @@ export default function SectionManager({ section }) {
       throw new Error(payload.error || `No se pudo actualizar el JSON de ${publishConfig.label} en GitHub.`);
     }
     return payload;
+  }
+
+
+  async function compareSources() {
+    if (!loaded || !jsonSections.has(section) || auditing || syncing || saving || deletingId) return;
+    setAuditing(true);
+    setAudit(null);
+    setMessage('');
+    try {
+      const fresh = await loadSectionItems(section);
+      const languages = section === 'videos' ? ['es'] : ['es', 'en', 'pt', 'fr'];
+      const indexed = await Promise.all(languages.map(async (language) => {
+        const url = 'https://raw.githubusercontent.com/eler30mr-star/sembrando-esperanza/main/public/data/' + language + '/' + section + '.json?v=' + Date.now();
+        const response = await fetch(url, { cache: 'no-store' });
+        if (response.status === 404) return { language, records: [] };
+        if (!response.ok) throw new Error('Error HTTP ' + response.status + ' en ' + language);
+        const records = await response.json();
+        if (!Array.isArray(records)) throw new Error('Índice inválido: ' + language);
+        return { language, records };
+      }));
+      const spanish = indexed.find((x) => x.language === 'es').records;
+      const localById = new Map(fresh.map((x) => [String(x.id), x]));
+      const remoteById = new Map(spanish.map((x) => [String(x.id), x]));
+      const orphaned = spanish.filter((x) => !localById.has(String(x.id)));
+      const pending = fresh.filter((x) => {
+        const remote = remoteById.get(String(x.id));
+        if (x.status !== 'published') return Boolean(remote);
+        return !remote || Number(remote.updatedAtMs || 0) !== Number(x.updatedAtMs || 0);
+      });
+      const missingTranslations = indexed.filter((x) => x.language !== 'es').flatMap((x) => {
+        const ids = new Set(x.records.map((entry) => String(entry.id)));
+        return fresh.filter((item) => item.status === 'published' && item.translations?.[x.language] && !ids.has(String(item.id)))
+          .map((item) => ({ ...item, language: x.language }));
+      });
+      setCollections((current) => ({ ...current, [section]: fresh }));
+      setAudit({ orphaned, pending, missingTranslations, totals: indexed.map((x) => x.language.toUpperCase() + ': ' + x.records.length).join(' · ') });
+    } catch (error) {
+      setMessage('No se pudo comparar: ' + error.message + '. No se modificaron registros.');
+    } finally {
+      setAuditing(false);
+    }
+  }
+
+  async function removeOrphan(item) {
+    if (!window.confirm('Este registro no existe en Firebase. ¿Retirar "' + getPrimaryTitle(item) + '" del JSON público?')) return;
+    setSyncing(true);
+    try {
+      await publishJson(section, [], { operation: 'delete', targetId: item.id });
+      setAudit(null);
+      setMessage('Registro retirado del JSON. GitHub conserva su historial.');
+    } catch (error) {
+      setMessage('No se pudo retirar el registro: ' + error.message);
+    } finally {
+      setSyncing(false);
+    }
   }
 
   async function republishItem(item) {
@@ -282,6 +339,12 @@ export default function SectionManager({ section }) {
         )}
         <div className="section-actions">
           {jsonSections.has(section) && (
+            <button className="btn muted" type="button" onClick={compareSources}
+              disabled={!loaded || auditing || syncing || saving || Boolean(deletingId)}>
+              {auditing ? 'Comparando...' : 'Comparar Firebase / JSON'}
+            </button>
+          )}
+          {jsonSections.has(section) && (
             <button
               className="btn muted"
               type="button"
@@ -311,6 +374,28 @@ export default function SectionManager({ section }) {
       </div>
 
       {message && <p className="admin-message">{message}</p>}
+      {audit && (
+        <section className="admin-panel" aria-live="polite">
+          <h3>Comparación Firebase / JSON GitHub</h3>
+          <p>{audit.totals}</p>
+          <p>Solo en GitHub: {audit.orphaned.length} · Desactualizados o faltantes: {audit.pending.length} · Traducciones faltantes: {audit.missingTranslations.length}</p>
+          {audit.orphaned.map((item) => (
+            <p key={item.id}><strong>{getPrimaryTitle(item)}</strong> — solo GitHub{' '}
+              <button type="button" onClick={() => removeOrphan(item)} disabled={syncing || saving || Boolean(deletingId)}>Retirar JSON</button>
+            </p>
+          ))}
+          {audit.pending.map((item) => (
+            <p key={item.id}><strong>{getPrimaryTitle(item)}</strong> — diferencia detectada{' '}
+              <button type="button" onClick={() => republishItem(item)} disabled={syncing || saving || Boolean(deletingId)}>Sincronizar</button>
+            </p>
+          ))}
+          {audit.missingTranslations.map((item) => (
+            <p key={item.id + item.language}>Falta traducción {item.language.toUpperCase()}: {getPrimaryTitle(item)}</p>
+          ))}
+          <p>Los registros no se eliminan automáticamente. Repite la comparación después de cada corrección.</p>
+        </section>
+      )}
+
       {loading && <p className="admin-message">Cargando contenido...</p>}
 
       {editing && section === 'plans' && (
