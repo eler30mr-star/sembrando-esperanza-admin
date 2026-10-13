@@ -1,4 +1,4 @@
-import { publicationIntent, reconcileIndex, assertUniqueIndex, publicationDiff } from '../lib/syncSafety.js';
+import { publicationIntent, reconcileIndex, assertUniqueIndex, publicationDiff, removedDetailPaths } from '../lib/syncSafety.js';
 const PUBLIC_REPO_FULL_NAME = process.env.PUBLIC_REPO_FULL_NAME || 'eler30mr-star/sembrando-esperanza';
 const PUBLIC_REPO_BRANCH = process.env.PUBLIC_REPO_BRANCH || 'main';
 const PUBLIC_DATA_DIR = process.env.PUBLIC_DATA_DIR || 'public/data';
@@ -377,20 +377,10 @@ export default async function handler(req, res) {
       const detailPath = `${PUBLIC_DATA_DIR}/${VIDEO_LANGUAGE}/videos/${video.slug}.json`;
       changes.set(detailPath, jsonFileChange(detailPath, video));
     }
-
-    for (const previousVideo of Array.isArray(previousIndex) ? previousIndex : []) {
-      const previousSlug = cleanString(previousVideo?.slug);
-      if (!previousSlug || nextSlugs.has(previousSlug)) continue;
-
-      const detailPath = `${PUBLIC_DATA_DIR}/${VIDEO_LANGUAGE}/videos/${previousSlug}.json`;
-      changes.set(detailPath, {
-        path: detailPath,
-        mode: '100644',
-        type: 'blob',
-        sha: null
-      });
-      deleted.push(detailPath);
-    }
+      for (const detailPath of removedDetailPaths(previousIndex, nextSummaries, `${PUBLIC_DATA_DIR}/${VIDEO_LANGUAGE}/videos`)) {
+        changes.set(detailPath, { path: detailPath, mode: '100644', type: 'blob', sha: null });
+        deleted.push(detailPath);
+      }
 
     changes.set(indexPath, jsonFileChange(indexPath, nextSummaries));
 
