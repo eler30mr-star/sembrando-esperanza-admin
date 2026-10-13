@@ -124,8 +124,18 @@ export default function SectionManager({ section }) {
     try {
       const fresh = await loadSectionItems(section);
       const languages = section === 'videos' ? ['es'] : ['es', 'en', 'pt', 'fr'];
+      // Fijar la lectura a un commit inmutable evita comparar contra raw/main retrasado.
+      const refResponse = await fetch(
+        'https://api.github.com/repos/eler30mr-star/sembrando-esperanza/git/ref/heads/main',
+        { cache: 'no-store' }
+      );
+      if (!refResponse.ok) throw new Error('No se pudo consultar el último commit público (HTTP ' + refResponse.status + ').');
+      const ref = await refResponse.json();
+      const commitSha = ref.object?.sha;
+      if (!/^[a-f0-9]{40}$/i.test(commitSha || '')) throw new Error('GitHub devolvió un commit inválido.');
       const indexed = await Promise.all(languages.map(async (language) => {
-        const url = 'https://raw.githubusercontent.com/eler30mr-star/sembrando-esperanza/main/public/data/' + language + '/' + section + '.json?v=' + Date.now();
+        const url = 'https://raw.githubusercontent.com/eler30mr-star/sembrando-esperanza/' +
+          commitSha + '/public/data/' + language + '/' + section + '.json';
         const response = await fetch(url, { cache: 'no-store' });
         if (response.status === 404) return { language, records: [] };
         if (!response.ok) throw new Error('Error HTTP ' + response.status + ' en ' + language);
@@ -148,7 +158,7 @@ export default function SectionManager({ section }) {
           .map((item) => ({ ...item, language: x.language }));
       });
       setCollections((current) => ({ ...current, [section]: fresh }));
-      setAudit({ orphaned, pending, missingTranslations, totals: indexed.map((x) => x.language.toUpperCase() + ': ' + x.records.length).join(' · ') });
+      setAudit({ commitSha, orphaned, pending, missingTranslations, totals: indexed.map((x) => x.language.toUpperCase() + ': ' + x.records.length).join(' · ') });
     } catch (error) {
       setMessage('No se pudo comparar: ' + error.message + '. No se modificaron registros.');
     } finally {
@@ -160,9 +170,10 @@ export default function SectionManager({ section }) {
     if (!window.confirm('Este registro no existe en Firebase. ¿Retirar "' + getPrimaryTitle(item) + '" del JSON público?')) return;
     setSyncing(true);
     try {
-      await publishJson(section, [], { operation: 'delete', targetId: item.id });
+      const result = await publishJson(section, [], { operation: 'delete', targetId: item.id });
+      if (!result?.commit) throw new Error('GitHub no devolvió el commit de eliminación.');
       setAudit(null);
-      setMessage('Registro retirado del JSON. GitHub conserva su historial.');
+      setMessage('Eliminado del JSON en commit ' + result.commit.slice(0, 7) + '. Pulsa Comparar para comprobarlo.');
     } catch (error) {
       setMessage('No se pudo retirar el registro: ' + error.message);
     } finally {
@@ -377,7 +388,7 @@ export default function SectionManager({ section }) {
       {audit && (
         <section className="admin-panel" aria-live="polite">
           <h3>Comparación Firebase / JSON GitHub</h3>
-          <p>{audit.totals}</p>
+          <p>{audit.totals} · Commit: {audit.commitSha.slice(0, 7)}</p>
           <p>Solo en GitHub: {audit.orphaned.length} · Desactualizados o faltantes: {audit.pending.length} · Traducciones faltantes: {audit.missingTranslations.length}</p>
           {audit.orphaned.map((item) => (
             <p key={item.id}><strong>{getPrimaryTitle(item)}</strong> — solo GitHub{' '}
