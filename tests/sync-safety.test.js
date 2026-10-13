@@ -44,3 +44,26 @@ test('resume diferencias sin perder contenido ajeno', () => {
   assert.deepEqual(publicationDiff([p('a', 'uno'), p('b', 'dos')], [p('a', 'nuevo'), p('c', 'tres')]),
     { added: 1, updated: 1, removed: 1, total: 2 });
 });
+
+test('eliminación multilingüe conserva registros ajenos y prepara ruta antigua', async () => {
+  const { removedDetailPaths } = await import('../lib/syncSafety.js');
+  const original = [p('historia-a', 'anterior'), p('historia-b', 'conservar')];
+  const intent = publicationIntent({operation:'delete',targetId:'historia-a',stories:[]},'stories');
+  for (const language of ['es','en','pt','fr']) {
+    const next = reconcileIndex(original, [], intent);
+    assert.deepEqual(next, [p('historia-b', 'conservar')]);
+    assert.deepEqual(removedDetailPaths(original,next,`public/data/${language}/stories`),
+      [`public/data/${language}/stories/anterior.json`]);
+  }
+});
+test('cambio de slug en planes retira el detalle viejo sin borrar otro plan', async () => {
+  const { removedDetailPaths } = await import('../lib/syncSafety.js');
+  const original = [p('plan-a', 'slug-viejo'), p('plan-b','conservar')];
+  const intent = publicationIntent({operation:'upsert',targetId:'plan-a',plans:[p('plan-a','slug-nuevo')]},'plans');
+  const next = reconcileIndex(original,[p('plan-a','slug-nuevo')],intent);
+  for (const language of ['es','en','pt','fr']) {
+    assert.deepEqual(removedDetailPaths(original,next,`public/data/${language}/plans`),
+      [`public/data/${language}/plans/slug-viejo.json`]);
+  }
+  assert.deepEqual(next.map(x=>x.id).sort(),['plan-a','plan-b']);
+});
