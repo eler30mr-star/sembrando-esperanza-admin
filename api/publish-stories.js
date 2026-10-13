@@ -12,6 +12,12 @@ function cleanString(value) {
   return String(value || '').trim();
 }
 
+function normalizeCoverImage(value) {
+  const url = cleanString(value);
+  const match = url.match(/^https:\/\/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)(?:\/|$)/);
+  return match ? `https://drive.google.com/thumbnail?id=${match[1]}&sz=w1200` : url;
+}
+
 function isPublished(story) {
   const status = cleanString(story?.status).toLowerCase();
   return status === 'published' || status === 'publicado';
@@ -63,7 +69,7 @@ function createStoryDetail(story, language) {
     slug,
     title: cleanString(source.title),
     category: cleanString(source.category || story.category) || 'Reflexión',
-    coverImage: cleanString(source.coverImage || source.cover || source.image || story.coverImage || story.cover || story.image),
+    coverImage: normalizeCoverImage(source.coverImage || source.cover || source.image || story.coverImage || story.cover || story.image),
     shortDescription,
     description: shortDescription,
     chapters: normalizeChapters(source.chapters, language),
