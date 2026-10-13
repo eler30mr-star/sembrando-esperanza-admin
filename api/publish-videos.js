@@ -229,6 +229,11 @@ async function commitJsonChanges(changes, message, expectedHead) {
         `/repos/${owner}/${repo}/git/trees/${baseTreeSha}?recursive=1`
       );
       const currentTree = await treeResponse.json();
+      if (currentTree.truncated === true || !Array.isArray(currentTree.tree)) {
+        const error = new Error('GitHub devolvió un árbol incompleto. Publicación cancelada para proteger archivos existentes.');
+        error.status = 409;
+        throw error;
+      }
       const existingPaths = new Set(
         (currentTree.tree || [])
           .filter((entry) => entry.type === 'blob')
