@@ -146,7 +146,17 @@ export default function SectionManager({ section }) {
       const spanish = indexed.find((x) => x.language === 'es').records;
       const localById = new Map(fresh.map((x) => [String(x.id), x]));
       const remoteById = new Map(spanish.map((x) => [String(x.id), x]));
-      const orphaned = spanish.filter((x) => !localById.has(String(x.id)));
+      // Considerar todos los idiomas: pueden quedar registros huérfanos fuera del índice español.
+      const orphanById = new Map();
+      for (const { language, records } of indexed) {
+        for (const record of records) {
+          const id = String(record.id);
+          if (localById.has(id)) continue;
+          if (!orphanById.has(id)) orphanById.set(id, { ...record, languages: [] });
+          orphanById.get(id).languages.push(language);
+        }
+      }
+      const orphaned = [...orphanById.values()];
       const pending = fresh.filter((x) => {
         const remote = remoteById.get(String(x.id));
         if (x.status !== 'published') return Boolean(remote);
@@ -202,14 +212,18 @@ export default function SectionManager({ section }) {
   }
 
   async function retryPublication() {
-    const item = items.find((entry) => entry.id === pendingPublication);
-    if (!item || !jsonSections.has(section)) return;
+    if (!pendingPublication || !jsonSections.has(section)) return;
     setSyncing(true);
     setMessage('');
     try {
-      await publishJson(section, [item], { operation: 'upsert', targetId: item.id });
+      const freshItems = await loadSectionItems(section);
+      const item = freshItems.find((entry) => entry.id === pendingPublication);
+      if (!item) throw new Error('El contenido ya no existe en Firebase. Actualiza la sección.');
+      const result = await publishJson(section, [item], { operation: 'upsert', targetId: item.id });
+      if (!result?.commit) throw new Error('GitHub no confirmó un commit.');
+      setCollections((current) => ({ ...current, [section]: freshItems }));
       setPendingPublication(null);
-      setMessage('Publicación pendiente completada correctamente en GitHub.');
+      setMessage('Publicación pendiente completada en GitHub. Commit: ' + result.commit.slice(0, 7) + '.');
     } catch (error) {
       setMessage(`Firebase conserva el contenido, pero sigue sin publicarse en GitHub: ${error.message}`);
     } finally {
@@ -391,7 +405,7 @@ export default function SectionManager({ section }) {
           <p>{audit.totals} · Commit: {audit.commitSha.slice(0, 7)}</p>
           <p>Solo en GitHub: {audit.orphaned.length} · Desactualizados o faltantes: {audit.pending.length} · Traducciones faltantes: {audit.missingTranslations.length}</p>
           {audit.orphaned.map((item) => (
-            <p key={item.id}><strong>{getPrimaryTitle(item)}</strong> — solo GitHub{' '}
+            <p key={item.id}><strong>{getPrimaryTitle(item)}</strong> — solo GitHub ({item.languages.join(', ').toUpperCase()}){' '}
               <button type="button" onClick={() => removeOrphan(item)} disabled={syncing || saving || Boolean(deletingId)}>Retirar JSON</button>
             </p>
           ))}
